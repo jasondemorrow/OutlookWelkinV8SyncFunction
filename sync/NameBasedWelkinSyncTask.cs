@@ -24,8 +24,7 @@ namespace OutlookWelkinSync
             }
 
             WelkinExternalId externalId = this.welkinClient.FindExternalMappingFor(this.welkinEvent);
-            WelkinCalendar calendar = this.welkinClient.RetrieveCalendar(this.welkinEvent.CalendarId);
-            WelkinWorker worker = this.welkinClient.RetrieveWorker(calendar.WorkerId);
+            WelkinUser practitioner = this.welkinClient.RetrieveUser(welkinEvent.HostId);
             Event syncedTo = null;
 
             // If there's already an Outlook event linked to this Welkin event
@@ -33,7 +32,7 @@ namespace OutlookWelkinSync
             {
                 string outlookICalId = externalId.Namespace.Substring(Constants.WelkinEventExtensionNamespacePrefix.Length);
                 this.logger.LogInformation($"Found Outlook event {outlookICalId} associated with Welkin event {welkinEvent.Id}.");
-                User outlookUser = this.outlookClient.FindUserCorrespondingTo(worker);
+                User outlookUser = this.outlookClient.FindUserCorrespondingTo(practitioner);
                 syncedTo = this.outlookClient.RetrieveEventWithICalId(outlookUser, outlookICalId);
                 if (this.welkinEvent.SyncWith(syncedTo)) // Welkin needs to be updated
                 {
@@ -46,16 +45,16 @@ namespace OutlookWelkinSync
             }
             else // An Outlook event needs to be created and linked
             {
-                WelkinPatient patient = this.welkinClient.RetrievePatient(this.welkinEvent.PatientId);
+                WelkinPatient patient = this.welkinClient.RetrievePatient(this.welkinEvent.Patient.Id);
                 // This will also create and persist the Outlook->Welkin link
-                syncedTo = this.outlookClient.CreateOutlookEventFromWelkinEvent(this.welkinEvent, worker, patient);
-                this.logger.LogInformation($"Successfully created a new Outlook placeholder event {syncedTo.ICalUId} in user calendar for {worker.Email}.");
+                syncedTo = this.outlookClient.CreateOutlookEventFromWelkinEvent(this.welkinEvent, practitioner, patient);
+                this.logger.LogInformation($"Successfully created a new Outlook placeholder event {syncedTo.ICalUId} in user calendar for {practitioner.Email}.");
 
                 if (syncedTo == null)
                 {
                     throw new SyncException(
                         $"Failed to create Outlook event for Welkin event {this.welkinEvent.Id}, probably because a " +
-                        $"corresponding Outlook user wasn't found for Welkin worker {worker.Email}");
+                        $"corresponding Outlook user wasn't found for Welkin worker {practitioner.Email}");
                 }
                 
                 WelkinToOutlookLink welkinToOutlookLink = new WelkinToOutlookLink(
@@ -81,8 +80,7 @@ namespace OutlookWelkinSync
             if (this.welkinClient.IsPlaceHolderEvent(this.welkinEvent))
             {
                 WelkinExternalId externalId = this.welkinClient.FindExternalMappingFor(this.welkinEvent);
-                WelkinCalendar calendar = this.welkinClient.RetrieveCalendar(this.welkinEvent.CalendarId);
-                WelkinWorker worker = this.welkinClient.RetrieveWorker(calendar.WorkerId);
+                WelkinUser worker = this.welkinClient.RetrieveUser(this.welkinEvent.HostId);
                 User outlookUser = this.outlookClient.FindUserCorrespondingTo(worker);
                 Event outlookEvent = null;
                 int idxId = (externalId == null || string.IsNullOrEmpty(externalId.Namespace))? 

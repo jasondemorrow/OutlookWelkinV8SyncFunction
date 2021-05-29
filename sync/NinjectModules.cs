@@ -21,6 +21,20 @@ namespace OutlookWelkinSync
                     .InSingletonScope()
                     .Named("DummyPatientId");
                 Bind<OutlookClient>().To<OutlookClient>().InSingletonScope();
+                string sandboxMode = Environment.GetEnvironmentVariable(Constants.WelkinUseSandboxKey)?.ToLowerInvariant() ?? "false";
+                bool useSandbox = Boolean.Parse(sandboxMode);
+                Bind<bool>()
+                    .ToConstant(useSandbox)
+                    .InSingletonScope()
+                    .Named(Constants.WelkinUseSandboxKey);
+                Bind<string>()
+                    .ToMethod((context) => Environment.GetEnvironmentVariable(Constants.WelkinTenantNameKey))
+                    .InSingletonScope()
+                    .Named(Constants.WelkinTenantNameKey);
+                Bind<string>()
+                    .ToMethod((context) => Environment.GetEnvironmentVariable(Constants.WelkinInstanceNameKey))
+                    .InSingletonScope()
+                    .Named(Constants.WelkinInstanceNameKey);
                 Bind<WelkinClient>().To<WelkinClient>().InSingletonScope();
                 Bind<OutlookSyncTask>().To<NameBasedOutlookSyncTask>();
 

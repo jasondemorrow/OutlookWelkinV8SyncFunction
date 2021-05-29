@@ -1,6 +1,8 @@
 namespace OutlookWelkinSync
 {
     using System;
+    using System.Collections.Generic;
+    using System.Linq;
     using Microsoft.Graph;
     using Newtonsoft.Json;
 
@@ -10,14 +12,14 @@ namespace OutlookWelkinSync
         {
             bool keepMine = 
                 (outlookEvent.LastModifiedDateTime == null) || 
-                (this.Updated != null && this.Updated.Value.ToUniversalTime() > outlookEvent.LastModifiedDateTime);
+                (this.UpdatedAt != null && this.UpdatedAt.Value.ToUniversalTime() > outlookEvent.LastModifiedDateTime);
 
             if (keepMine)
             {
                 outlookEvent.IsAllDay = this.IsAllDay;
                 if (this.IsAllDay)
                 {
-                    DateTimeOffset dayUtc = this.Day.Value.ToUniversalTime();
+                    DateTimeOffset dayUtc = this.Start.Value.ToUniversalTime();
                     outlookEvent.Start.DateTime = dayUtc.DateTime.Date.ToString("o");
                     outlookEvent.End.DateTime = dayUtc.AddDays(1).DateTime.Date.ToString("o");
                 }
@@ -35,13 +37,11 @@ namespace OutlookWelkinSync
                 
                 if (this.IsAllDay)
                 {
-                    this.Day = DateTime.Parse(outlookEvent.Start.DateTime).Date;
-                    this.Start = this.Day; // midnight of the start date
-                    this.End = this.Day.Value.AddDays(1);
+                    this.Start = DateTime.Parse(outlookEvent.Start.DateTime);
+                    this.End = this.Start.Value.AddDays(1);
                 }
                 else 
                 {
-                    this.Day = null;
                     this.Start = outlookEvent.StartUtc();
                     this.End = outlookEvent.EndUtc();
                 }
@@ -53,46 +53,71 @@ namespace OutlookWelkinSync
         [JsonProperty("id")]
         public string Id { get; set; }
 
-        [JsonProperty("is_all_day")]
+        [JsonProperty("allDayEvent")]
         public bool IsAllDay { get; set; }
 
-        [JsonProperty("ignore_unavailable_times", NullValueHandling=NullValueHandling.Ignore)]
-        public bool IgnoreUnavailableTimes { get; set; }
+        [JsonProperty("updatedAt", NullValueHandling=NullValueHandling.Ignore)]
+        public DateTimeOffset? UpdatedAt { get; set; }
 
-        [JsonProperty("ignore_working_hours", NullValueHandling=NullValueHandling.Ignore)]
-        public bool IgnoreWorkingHours { get; set; }
+        [JsonProperty("createdAt", NullValueHandling=NullValueHandling.Ignore)]
+        public DateTimeOffset? CreatedAt { get; set; }
 
-        [JsonProperty("calendar_id")]
-        public string CalendarId { get; set; }
+        [JsonProperty("updatedBy")]
+        public string UpdatedBy { get; set; }
 
-        [JsonProperty("patient_id")]
-        public string PatientId { get; set; }
+        [JsonProperty("createdBy")]
+        public string CreatedBy { get; set; }
 
-        [JsonProperty("outcome", NullValueHandling=NullValueHandling.Ignore)]
-        public string Outcome { get; set; }
+        [JsonProperty("hostId")]
+        public string HostId { get; set; }
 
-        [JsonProperty("modality")]
-        public string Modality { get; set; }
+        [JsonProperty("eventTitle")]
+        public string EventTitle { get; set; }
 
-        [JsonProperty("appointment_type")]
-        public string AppointmentType { get; set; }
+        [JsonProperty("eventDescription")]
+        public string EventDescription { get; set; }
 
-        [JsonProperty("updated_at", NullValueHandling=NullValueHandling.Ignore)]
-        public DateTimeOffset? Updated { get; set; }
+        [JsonProperty("eventType")]
+        public string EventType { get; set; }
 
-        [JsonProperty("created_at", NullValueHandling=NullValueHandling.Ignore)]
-        public DateTimeOffset? Created { get; set; }
+        [JsonProperty("eventStatus")]
+        public string EventStatus { get; set; }
 
-        [JsonProperty("start_time")]
+        [JsonProperty("eventMode")]
+        public string EventMode { get; set; }
+
+        [JsonProperty("eventColor")]
+        public string EventColor { get; set; }
+
+        [JsonProperty("startDateTime")]
         public DateTimeOffset? Start { get; set; }
 
-        [JsonProperty("end_time")]
+        [JsonProperty("endDateTime")]
         public DateTimeOffset? End { get; set; }
 
-        // If this is an all-day event, this is the date it's on
-        [JsonProperty("day", NullValueHandling=NullValueHandling.Ignore)]
-        [JsonConverter(typeof(JsonDateFormatConverter), "yyyy-MM-dd")]
-        public DateTimeOffset? Day { get; set; }
+        [JsonProperty("localStartDateTime")]
+        public DateTimeOffset? LocalStart { get; set; }
+
+        [JsonProperty("localEndDateTime")]
+        public DateTimeOffset? LocalEnd { get; set; }
+
+        [JsonProperty("participants")]
+        public List<WelkinEventParticipant> Participants { get; set; }
+
+        [JsonProperty("additionalInfo")]
+        public Dictionary<string, string> AdditionalInfo { get; set; }
+
+        public WelkinEventParticipant Patient
+        {
+            get
+            {
+                return this.Participants?.Where(
+                    p => 
+                        !string.IsNullOrEmpty(p.ParticipantRole) && 
+                        p.ParticipantRole.Equals(Constants.WelkinParticipantRolePatient, StringComparison.InvariantCultureIgnoreCase)
+                    ).FirstOrDefault();
+            }
+        }
 
         public override string ToString()
         {
@@ -104,8 +129,8 @@ namespace OutlookWelkinSync
         {
             get
             {
-                return !string.IsNullOrEmpty(this.Outcome) &&
-                       this.Outcome.Equals(Constants.WelkinCancelledOutcome, StringComparison.InvariantCultureIgnoreCase);
+                return !string.IsNullOrEmpty(this.EventStatus) &&
+                       this.EventStatus.Equals(Constants.WelkinEventStatusCancelled, StringComparison.InvariantCultureIgnoreCase);
             }
         }
     }

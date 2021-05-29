@@ -54,7 +54,7 @@ namespace OutlookWelkinSync
                         continue;
                     }
 
-                    WelkinWorker worker = this.welkinClient.FindWorker(userEmail);
+                    WelkinUser worker = this.welkinClient.FindUser(userEmail);
                     if (worker == null)
                     {
                         this.logger.LogInformation("No Welkin worker found while retrieving Outlook event.");

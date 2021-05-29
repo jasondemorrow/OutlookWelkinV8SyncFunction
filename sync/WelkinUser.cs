@@ -3,28 +3,31 @@ namespace OutlookWelkinSync
     using System;
     using Newtonsoft.Json;
     
-    public class WelkinWorker
+    public class WelkinUser
     {
         [JsonProperty("id")]
         public string Id { get; set; }
 
-        [JsonProperty("first_name")]
+        [JsonProperty("username")]
+        public string UserName { get; set; }
+
+        [JsonProperty("firstName")]
         public string FirstName { get; set; }
 
-        [JsonProperty("last_name")]
+        [JsonProperty("lastName")]
         public string LastName { get; set; }
 
         [JsonProperty("email")]
         public string Email { get; set; }
 
+        [JsonProperty("phone")]
+        public string Phone { get; set; }
+
         [JsonProperty("timezone")]
         public string Timezone { get; set; }
 
-        [JsonProperty("updated_at", NullValueHandling=NullValueHandling.Ignore)]
-        public DateTimeOffset? Updated { get; set; }
-
-        [JsonProperty("created_at", NullValueHandling=NullValueHandling.Ignore)]
-        public DateTimeOffset? Created { get; set; }
+        [JsonProperty("credentials")]
+        public string Credentials { get; set; }
 
         public override string ToString()
         {

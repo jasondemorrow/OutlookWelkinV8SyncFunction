@@ -29,34 +29,38 @@ namespace OutlookWelkinSync
         private readonly ILogger logger;
         private readonly string token;
         private readonly string dummyPatientId;
+        private readonly string baseEndpointUrl;
 
-        public WelkinClient(WelkinConfig config, ILogger logger, [Named("DummyPatientId")] string dummyPatientId)
+        public WelkinClient(
+            WelkinConfig config, 
+            ILogger logger, 
+            [Named(Constants.DummyPatientEnvVarName)] string dummyPatientId, 
+            [Named(Constants.WelkinUseSandboxKey)] bool useSandbox,
+            [Named(Constants.WelkinTenantNameKey)] string tenantName,
+            [Named(Constants.WelkinInstanceNameKey)] string instanceName)
         {
             this.config = config;
             this.logger = logger;
             this.dummyPatientId = dummyPatientId;
-            var payload = new Dictionary<string, object>()
+            string baseUrl = useSandbox ? "https://api.sandbox.welkincloud.io" : "https://api.live.welkincloud.io";
+            string authUrl = $"{baseUrl}/{tenantName}/admin/api_clients/{this.config.ClientId}";
+            this.baseEndpointUrl = $"{baseUrl}/{tenantName}/{instanceName}/";
+            
+            Dictionary<string, string> values = new Dictionary<string, string> 
             {
-                { "iss", config.ClientId },
-                { "aud", config.TokenUrl },
-                { "scope", config.Scope },
-                { "exp", new DateTimeOffset(DateTime.UtcNow.AddHours(1)).ToUnixTimeSeconds() }
+                { "secret", config.ClientSecret }
             };
+            string json = JsonConvert.SerializeObject(values);
+            StringContent data = new StringContent(json, Encoding.UTF8, "application/json");
 
-            var secretKey = Encoding.UTF8.GetBytes(config.ClientSecret);
-            string assertion = JWT.Encode(payload, secretKey, JwsAlgorithm.HS256);
-
-            string body = $"grant_type={config.GrantType}&assertion={assertion}";
             using (var httpClient = new HttpClient())
             {
-                HttpResponseMessage postResponse = httpClient.PostAsync(
-                        config.TokenUrl,
-                        new StringContent(body, Encoding.UTF8, "application/x-www-form-urlencoded"))
+                HttpResponseMessage postResponse = httpClient.PostAsync(authUrl, data)
                     .GetAwaiter()
                     .GetResult();
                 string content = postResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult();
                 dynamic resp = JObject.Parse(content);
-                this.token = resp.access_token;
+                this.token = resp.token;
             }
 
             if (string.IsNullOrEmpty(this.token))
@@ -67,10 +71,10 @@ namespace OutlookWelkinSync
 
         private T CreateOrUpdateObject<T>(T obj, string path, string id = null) where T : class
         {
-            string url = (id == null)? $"{config.ApiUrl}{path}" : $"{config.ApiUrl}{path}/{id}";
+            string url = (id == null) ? $"{this.baseEndpointUrl}{path}" : $"{this.baseEndpointUrl}{path}/{id}";
             var client = new RestClient(url);
 
-            Method method = (id == null)? Method.POST : Method.PUT;
+            Method method = (id == null) ? Method.POST : Method.PUT;
             var request = new RestRequest(method);
             request.AddHeader("authorization", "Bearer " + this.token);
             request.AddHeader("cache-control", "no-cache");
@@ -84,15 +88,15 @@ namespace OutlookWelkinSync
 
             JObject result = JsonConvert.DeserializeObject(response.Content) as JObject;
             JObject data = result?.First?.ToObject<JProperty>()?.Value.ToObject<JObject>();
-            T updated = (data == null)? default(T) : JsonConvert.DeserializeObject<T>(data.ToString());
-            
+            T updated = (data == null) ? default(T) : JsonConvert.DeserializeObject<T>(data.ToString());
+
             internalCache.Set(url, updated, cacheEntryOptions);
             return updated;
         }
 
         private T RetrieveObject<T>(string id, string path, Dictionary<string, string> parameters = null)
         {
-            string url = $"{config.ApiUrl}{path}/{id}";
+            string url = $"{this.baseEndpointUrl}{path}/{id}";
             T retrieved = default(T);
             if (internalCache.TryGetValue(url, out retrieved))
             {
@@ -104,7 +108,7 @@ namespace OutlookWelkinSync
             request.AddHeader("authorization", "Bearer " + this.token);
             request.AddHeader("cache-control", "no-cache");
 
-            foreach(KeyValuePair<string, string> kvp in parameters ?? Enumerable.Empty<KeyValuePair<string, string>>())
+            foreach (KeyValuePair<string, string> kvp in parameters ?? Enumerable.Empty<KeyValuePair<string, string>>())
             {
                 request.AddParameter(kvp.Key, kvp.Value);
             }
@@ -125,7 +129,7 @@ namespace OutlookWelkinSync
 
         private void DeleteObject(string id, string path)
         {
-            string url = $"{config.ApiUrl}{path}/{id}";
+            string url = $"{this.baseEndpointUrl}{path}/{id}";
             var client = new RestClient(url);
 
             Method method = Method.DELETE;
@@ -144,70 +148,94 @@ namespace OutlookWelkinSync
 
         private IEnumerable<T> SearchObjects<T>(string path, Dictionary<string, string> parameters = null)
         {
-            // TODO: Consolidate pagination logic with RetrieveAllWorkers
-            string url = $"{config.ApiUrl}{path}";
+            string url = $"{this.baseEndpointUrl}{path}";
             string key = url + "?" + string.Join("&", parameters.Select(e => $"{e.Key}={e.Value}"));
             IEnumerable<T> found;
+
             if (internalCache.TryGetValue(key, out found))
             {
                 return found;
             }
+
             var retrieved = new List<T>();
             var client = new RestClient(url);
             var request = new RestRequest(Method.GET);
             request.AddHeader("authorization", "Bearer " + this.token);
             request.AddHeader("cache-control", "no-cache");
-            foreach(KeyValuePair<string, string> kvp in parameters ?? Enumerable.Empty<KeyValuePair<string, string>>())
+
+            foreach (KeyValuePair<string, string> kvp in parameters ?? Enumerable.Empty<KeyValuePair<string, string>>())
             {
                 request.AddParameter(kvp.Key, kvp.Value);
             }
+
             var response = client.Execute(request);
             //this.logger.LogInformation($"GET {key} yields {response.Content}");
+
             if (response.StatusCode != System.Net.HttpStatusCode.OK)
             {
                 throw new Exception($"HTTP status {response.StatusCode} with message '{response.ErrorMessage}' and body '{response.Content}'");
             }
+
             JObject result = JsonConvert.DeserializeObject(response.Content) as JObject;
-            JArray data = result.First.ToObject<JProperty>().Value.ToObject<JArray>();
+            JArray data = null;
             //this.logger.LogInformation($"GET {key} yields {response.Content}");
-            if (!result.ContainsKey("data"))
+
+            if (result.ContainsKey("data"))
+            {
+                data = result["data"].ToObject<JArray>();
+            }
+            else if (result.ContainsKey("content"))
+            {
+                data = result["content"].ToObject<JArray>();
+            }
+            else
             {
                 return null;
             }
+
             IEnumerable<T> page = JsonConvert.DeserializeObject<IEnumerable<T>>(data.ToString());
             retrieved.AddRange(page);
-            JObject links = result["links"]?.ToObject<JObject>();
-            string nextUrl = this.GetNextResultsUrl(links);
-            while (nextUrl != null)
+            int totalPages = result["totalPages"].ToObject<int>();
+            int currentPage = result["pageable"]["pageNumber"].ToObject<int>();
+
+            while (currentPage < totalPages)
             {
+                currentPage++;
+                string nextUrl = $"{url}?page={currentPage}";
                 client = new RestClient(nextUrl);
                 request = new RestRequest(Method.GET);
                 request.AddHeader("authorization", "Bearer " + this.token);
                 request.AddHeader("cache-control", "no-cache");
                 response = client.Execute(request);
                 result = JsonConvert.DeserializeObject(response.Content) as JObject;
-                if (result == null || !result.ContainsKey("data"))
+                if (result.ContainsKey("data"))
+                {
+                    data = result["data"].ToObject<JArray>();
+                }
+                else if (result.ContainsKey("content"))
+                {
+                    data = result["content"].ToObject<JArray>();
+                }
+                else
                 {
                     break;
                 }
-                data = result["data"].ToObject<JArray>();
                 page = JsonConvert.DeserializeObject<List<T>>(data.ToString());
                 retrieved.AddRange(page);
-                links = result["links"]?.ToObject<JObject>();
-                nextUrl = this.GetNextResultsUrl(links);
             }
+
             internalCache.Set(key, retrieved, cacheEntryOptions);
             return retrieved;
         }
 
         public WelkinEvent CreateOrUpdateEvent(WelkinEvent evt, string id = null)
         {
-            return this.CreateOrUpdateObject(evt, Constants.CalendarEventResourceName, id);
+            return this.CreateOrUpdateObject(evt, Constants.V8CalendarEventResourceName, id);
         }
 
         public WelkinEvent RetrieveEvent(string eventId)
         {
-            return this.RetrieveObject<WelkinEvent>(eventId, Constants.CalendarEventResourceName);
+            return this.RetrieveObject<WelkinEvent>(eventId, Constants.V8CalendarEventResourceName);
         }
 
         public IEnumerable<WelkinEvent> RetrieveEventsUpdatedSince(TimeSpan ago)
@@ -215,28 +243,28 @@ namespace OutlookWelkinSync
             DateTime end = DateTime.UtcNow;
             DateTime start = end - ago;
             Dictionary<string, string> parameters = new Dictionary<string, string>();
-            parameters["page[from]"] = start.ToString("o");
-            parameters["page[to]"] = end.ToString("o");
-            IEnumerable<WelkinEvent> retrieved = SearchObjects<WelkinEvent>(Constants.CalendarEventResourceName, parameters);
+            parameters["from"] = start.ToFormattedString("o3");
+            parameters["to"] = end.ToFormattedString("o3");
+            IEnumerable<WelkinEvent> retrieved = SearchObjects<WelkinEvent>(Constants.V8CalendarEventResourceName, parameters);
             return retrieved.Where(this.IsValid);
         }
 
         private bool IsValid(WelkinEvent evt)
         {
-            return 
-                evt != null && evt.PatientId != null &&
-                !(evt.Outcome != null && evt.Outcome.Equals(Constants.WelkinCancelledOutcome));
+            return
+                evt?.Patient != null &&
+                !(evt.EventStatus != null && evt.EventStatus.Equals(Constants.WelkinEventStatusCancelled));
         }
 
         public void DeleteEvent(WelkinEvent welkinEvent)
         {
-            this.DeleteObject(welkinEvent.Id, Constants.CalendarEventResourceName);
+            this.DeleteObject(welkinEvent.Id, Constants.V8CalendarEventResourceName);
         }
 
         public WelkinEvent CancelEvent(WelkinEvent welkinEvent)
         {
-            welkinEvent.Outcome = Constants.WelkinCancelledOutcome;
-            return this.CreateOrUpdateObject(welkinEvent, Constants.CalendarEventResourceName, welkinEvent.Id);
+            welkinEvent.EventStatus = Constants.WelkinEventStatusCancelled;
+            return this.CreateOrUpdateObject(welkinEvent, Constants.V8CalendarEventResourceName, welkinEvent.Id);
         }
 
         public WelkinCalendar RetrieveCalendar(string calendarId)
@@ -244,9 +272,9 @@ namespace OutlookWelkinSync
             return this.RetrieveObject<WelkinCalendar>(calendarId, Constants.CalendarResourceName);
         }
 
-        public WelkinCalendar RetrieveCalendarFor(WelkinWorker worker)
+        public WelkinCalendar RetrieveCalendarFor(WelkinUser user)
         {
-            string url = $"{config.ApiUrl}{Constants.CalendarResourceName}?worker={worker.Id}";
+            string url = $"{config.ApiUrl}{Constants.CalendarResourceName}?worker={user.UserName}";
             WelkinCalendar found;
             if (internalCache.TryGetValue(url, out found))
             {
@@ -285,106 +313,42 @@ namespace OutlookWelkinSync
 
         public WelkinPatient RetrievePatient(string patientId)
         {
-            return this.RetrieveObject<WelkinPatient>(patientId, Constants.PatientResourceName);
+            return this.RetrieveObject<WelkinPatient>(patientId, Constants.WelkinPatientResourceName);
         }
 
-        public WelkinWorker RetrieveWorker(string workerId)
+        public WelkinUser RetrieveUser(string userId)
         {
-            return this.RetrieveObject<WelkinWorker>(workerId, Constants.WorkerResourceName);
+            return this.RetrieveObject<WelkinUser>(userId, Constants.WelkinUserResourceName);
         }
 
-        public IEnumerable<WelkinWorker> RetrieveAllWorkers()
+        public IEnumerable<WelkinUser> RetrieveAllUsers()
         {
-            List<WelkinWorker> workers = new List<WelkinWorker>();
-            var client = new RestClient(config.ApiUrl + Constants.WorkerResourceName);
-            var request = new RestRequest(Method.GET);
-            request.AddHeader("authorization", "Bearer " + this.token);
-            request.AddHeader("cache-control", "no-cache");
-            var response = client.Execute(request);
-            JObject result = JsonConvert.DeserializeObject(response.Content) as JObject;
-            if (!result.ContainsKey("data"))
-            {
-                return null;
-            }
-            JArray data = result["data"].ToObject<JArray>();
-            IEnumerable<WelkinWorker> page = JsonConvert.DeserializeObject<List<WelkinWorker>>(data.ToString());
-            workers.AddRange(page);
-            JObject links = result["links"]?.ToObject<JObject>();
-            string nextUrl = this.GetNextResultsUrl(links);
-            while (nextUrl != null)
-            {
-                client = new RestClient(nextUrl);
-                request = new RestRequest(Method.GET);
-                request.AddHeader("authorization", "Bearer " + this.token);
-                request.AddHeader("cache-control", "no-cache");
-                response = client.Execute(request);
-                result = JsonConvert.DeserializeObject(response.Content) as JObject;
-                if (result == null || !result.ContainsKey("data"))
-                {
-                    break;
-                }
-                data = result["data"].ToObject<JArray>();
-                page = JsonConvert.DeserializeObject<List<WelkinWorker>>(data.ToString());
-                workers.AddRange(page);
-                links = result["links"]?.ToObject<JObject>();
-                nextUrl = this.GetNextResultsUrl(links);
-            }
-            // Cache results for individual retrieval by email or ID
-            foreach (WelkinWorker worker in workers)
-            {
-                string key = $"{config.ApiUrl}{Constants.WorkerResourceName}/{worker.Id}";
-                internalCache.Set(key, worker, cacheEntryOptions);
-                internalCache.Set(worker.Email.ToLowerInvariant(), worker, cacheEntryOptions);
-            }
-            return workers;
+            return this.SearchObjects<WelkinUser>(Constants.WelkinUserResourceName);
         }
 
-        private string GetNextResultsUrl(JObject links)
-        {
-            if (links != null)
-            {
-                if (links.ContainsKey("href"))
-                {
-                    JObject href = links["href"].ToObject<JObject>();
-                    if (href.ContainsKey("next"))
-                    {
-                        //this.logger.LogInformation($"Got next link from href {href.ToString()}");
-                        return href["next"].ToString();
-                    }
-                }
-                if (links.ContainsKey("next"))
-                {
-                    JObject next = links["next"].ToObject<JObject>();
-                    if (next.ContainsKey("href"))
-                    {
-                        //this.logger.LogInformation($"Got href link from next {next.ToString()}");
-                        return next["href"].ToString();
-                    }
-                }
-            }
-            return null;
-        }
-
-        public WelkinWorker FindWorker(string email)
+        public WelkinUser FindUser(string email)
         {
             if (string.IsNullOrEmpty(email))
             {
                 return null;
             }
-            WelkinWorker worker;
-            if (internalCache.TryGetValue(email.ToLowerInvariant(), out worker))
+
+            WelkinUser user;
+
+            if (internalCache.TryGetValue(email.ToLowerInvariant(), out user))
             {
-                return worker;
+                return user;
             }
+
             Dictionary<string, string> parameters = new Dictionary<string, string>();
             parameters["email"] = email;
-            IEnumerable<WelkinWorker> found = SearchObjects<WelkinWorker>(Constants.WorkerResourceName, parameters);
-            worker = found.FirstOrDefault();
-            if (worker != null)
+            IEnumerable<WelkinUser> found = SearchObjects<WelkinUser>(Constants.WelkinUserResourceName, parameters);
+            user = found.FirstOrDefault();
+            if (user != null)
             {
-                internalCache.Set(worker.Email.ToLowerInvariant(), worker, cacheEntryOptions);
+                internalCache.Set(user.Email.ToLowerInvariant(), user, cacheEntryOptions);
             }
-            return worker;
+            return user;
         }
 
         public WelkinExternalId FindExternalMappingFor(WelkinEvent internalEvent, Event externalEvent = null)
@@ -396,7 +360,7 @@ namespace OutlookWelkinSync
                 string derivedGuid = Guids.FromText(externalEvent.ICalUId).ToString();
                 parameters["external_id"] = derivedGuid;
             }
-            parameters["resource"] = Constants.CalendarEventResourceName;
+            parameters["resource"] = Constants.V8CalendarEventResourceName;
             parameters["welkin_id"] = internalEvent.Id;
             IEnumerable<WelkinExternalId> foundLinks = SearchObjects<WelkinExternalId>(Constants.ExternalIdResourceName, parameters);
             return foundLinks
@@ -407,29 +371,29 @@ namespace OutlookWelkinSync
         public IEnumerable<WelkinExternalId> FindExternalEventMappingsUpdatedBetween(DateTimeOffset start, DateTimeOffset end)
         {
             Dictionary<string, string> parameters = new Dictionary<string, string>();
-            parameters["resource"] = Constants.CalendarEventResourceName;
+            parameters["resource"] = Constants.V8CalendarEventResourceName;
             parameters["page[from]"] = start.ToString("o");
             parameters["page[to]"] = end.ToString("o");
             IEnumerable<WelkinExternalId> foundLinks = SearchObjects<WelkinExternalId>(Constants.ExternalIdResourceName, parameters);
             return foundLinks.Where(x => x.Namespace.StartsWith(Constants.WelkinEventExtensionNamespacePrefix));
         }
-        
+
         public WelkinLastSyncEntry RetrieveLastSyncFor(WelkinEvent internalEvent)
         {
             // We store last sync time for an event as an external ID. This is a hack to make event types extensible.
             Dictionary<string, string> parameters = new Dictionary<string, string>();
-            parameters["resource"] = Constants.CalendarEventResourceName;
+            parameters["resource"] = Constants.V8CalendarEventResourceName;
             parameters["welkin_id"] = internalEvent.Id;
             IEnumerable<WelkinExternalId> foundLinks = SearchObjects<WelkinExternalId>(Constants.ExternalIdResourceName, parameters);
             if (foundLinks == null || !foundLinks.Any())
             {
                 return null;
             }
-            WelkinExternalId externalId = 
+            WelkinExternalId externalId =
                 foundLinks
                     .Where(x => x.Namespace.StartsWith(Constants.WelkinLastSyncExtensionNamespace))
                     .FirstOrDefault();
-            return (externalId == null)? null : new WelkinLastSyncEntry(externalId);
+            return (externalId == null) ? null : new WelkinLastSyncEntry(externalId);
         }
 
         public bool UpdateLastSyncFor(WelkinEvent internalEvent, string existingId = null, DateTimeOffset? lastSync = null)
@@ -447,7 +411,7 @@ namespace OutlookWelkinSync
             WelkinExternalId welkinExternalId = new WelkinExternalId
             {
                 Id = existingId,
-                Resource = Constants.CalendarEventResourceName,
+                Resource = Constants.V8CalendarEventResourceName,
                 ExternalId = Guid.NewGuid().ToString(), // does not matter
                 InternalId = internalEvent.Id,
                 Namespace = syntheticNamespace
@@ -457,24 +421,30 @@ namespace OutlookWelkinSync
             return welkinExternalId != null && welkinExternalId.InternalId.Equals(internalEvent.Id);
         }
 
-        public WelkinEvent GeneratePlaceholderEventForCalendar(WelkinCalendar calendar)
+        public WelkinEvent GeneratePlaceholderEventForHost(WelkinUser host)
         {
             WelkinEvent evt = new WelkinEvent();
-            evt.CalendarId = calendar.Id;
+            evt.HostId = host.Id;
             evt.IsAllDay = true;
-            evt.Day = DateTime.UtcNow.Date;
-            evt.Modality = Constants.DefaultModality;
-            evt.AppointmentType = Constants.DefaultAppointmentType;
-            evt.PatientId = this.dummyPatientId;
-            evt.IgnoreUnavailableTimes = true;
-            evt.IgnoreWorkingHours = true;
-            
+            evt.Start = DateTime.UtcNow.Date;
+            evt.EventStatus = Constants.WelkinEventStatusScheduled;
+            evt.EventMode = Constants.WelkinEventModeInPerson;
+            WelkinEventParticipant practitioner = new WelkinEventParticipant();
+            practitioner.ParticipantId = host.Id;
+            practitioner.ParticipantRole = Constants.WelkinParticipantRolePsm;
+            practitioner.Attended = false;
+            WelkinEventParticipant patient = new WelkinEventParticipant();
+            patient.ParticipantId = this.dummyPatientId;
+            patient.ParticipantRole = Constants.WelkinParticipantRolePatient;
+            patient.Attended = false;
+            evt.Participants = new List<WelkinEventParticipant>{ practitioner, patient };
+
             return evt;
         }
 
         public bool IsPlaceHolderEvent(WelkinEvent evt)
         {
-            string patientId = evt?.PatientId;
+            string patientId = evt?.Patient?.Id;
             return !string.IsNullOrEmpty(patientId) && patientId.Equals(this.dummyPatientId);
         }
     }

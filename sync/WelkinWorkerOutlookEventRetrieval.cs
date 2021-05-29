@@ -15,13 +15,13 @@ namespace OutlookWelkinSync
         public override IEnumerable<Event> RetrieveAllUpdatedSince(TimeSpan ago)
         {
             List<Event> events = new List<Event>();
-            IEnumerable<WelkinWorker> workers = this.welkinClient.RetrieveAllWorkers();
+            IEnumerable<WelkinUser> workers = this.welkinClient.RetrieveAllUsers();
             ISet<string> domains = this.outlookClient.RetrieveAllDomainsInCompany();
             ISet<string> successfulOutlookUsers = new HashSet<string>();
             DateTime end = DateTime.UtcNow;
             DateTime start = end - ago;
 
-            foreach (WelkinWorker worker in workers)
+            foreach (WelkinUser worker in workers)
             {
                 try
                 {
@@ -59,10 +59,10 @@ namespace OutlookWelkinSync
         public override IEnumerable<Event> RetrieveAllOrphanedBetween(DateTimeOffset start, DateTimeOffset end)
         {
             List<Event> orphaned = new List<Event>();
-            IEnumerable<WelkinWorker> workers = this.welkinClient.RetrieveAllWorkers();
+            IEnumerable<WelkinUser> workers = this.welkinClient.RetrieveAllUsers();
             ISet<string> successfulOutlookUsers = new HashSet<string>();
 
-            foreach (WelkinWorker worker in workers)
+            foreach (WelkinUser worker in workers)
             {
                 try
                 {

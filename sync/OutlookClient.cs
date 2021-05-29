@@ -289,7 +289,7 @@ namespace OutlookWelkinSync
             return retrieved;
         }
 
-        public User FindUserCorrespondingTo(WelkinWorker welkinWorker)
+        public User FindUserCorrespondingTo(WelkinUser welkinWorker)
         {
             User retrieved;
             string key = "outlookuserfor:" + welkinWorker.Email;
@@ -319,17 +319,17 @@ namespace OutlookWelkinSync
             return null;
         }
 
-        private static ISet<string> ProducePrincipalCandidates(WelkinWorker worker, ISet<string> domains)
+        private static ISet<string> ProducePrincipalCandidates(WelkinUser user, ISet<string> domains)
         {
             HashSet<string> candidates = new HashSet<string>();
-            int idxIdAt = worker.Id.IndexOf("@");
-            string idAt = (idxIdAt > -1) ? worker.Id.Substring(0, idxIdAt) : null;
-            int idxIdPlus = worker.Id.IndexOf("+");
-            string idPlus = (idxIdPlus > -1) ? worker.Id.Substring(0, idxIdPlus) : null;
-            int idxEmailAt = worker.Email.IndexOf("@");
-            string emailAt = (idxEmailAt > -1) ? worker.Email.Substring(0, idxEmailAt) : null;
-            int idxEmailPlus = worker.Email.IndexOf("+");
-            string emailPlus = (idxEmailPlus > -1) ? worker.Email.Substring(0, idxEmailPlus) : null;
+            int idxIdAt = user.UserName.IndexOf("@");
+            string idAt = (idxIdAt > -1) ? user.UserName.Substring(0, idxIdAt) : null;
+            int idxIdPlus = user.UserName.IndexOf("+");
+            string idPlus = (idxIdPlus > -1) ? user.UserName.Substring(0, idxIdPlus) : null;
+            int idxEmailAt = user.Email.IndexOf("@");
+            string emailAt = (idxEmailAt > -1) ? user.Email.Substring(0, idxEmailAt) : null;
+            int idxEmailPlus = user.Email.IndexOf("+");
+            string emailPlus = (idxEmailPlus > -1) ? user.Email.Substring(0, idxEmailPlus) : null;
 
             foreach (string domain in domains)
             {
@@ -423,7 +423,7 @@ namespace OutlookWelkinSync
             return null;
         }
 
-        public Event CreateOutlookEventFromWelkinEvent(WelkinEvent welkinEvent, WelkinWorker welkinUser, WelkinPatient welkinPatient, string calendarId = null)
+        public Event CreateOutlookEventFromWelkinEvent(WelkinEvent welkinEvent, WelkinUser welkinUser, WelkinPatient welkinPatient, string calendarId = null)
         {
             User outlookUser = this.FindUserCorrespondingTo(welkinUser);
             if (outlookUser == null)
@@ -435,12 +435,12 @@ namespace OutlookWelkinSync
             return this.CreateOutlookEventFromWelkinEvent(welkinEvent, welkinUser, outlookUser, welkinPatient, calendarId);
         }
 
-        public Event CreateOutlookEventFromWelkinEvent(WelkinEvent welkinEvent, WelkinWorker welkinUser, User outlookUser, WelkinPatient welkinPatient, string calendarId = null)
+        public Event CreateOutlookEventFromWelkinEvent(WelkinEvent welkinEvent, WelkinUser welkinUser, User outlookUser, WelkinPatient welkinPatient, string calendarId = null)
         {
             // Create and associate a new Outlook event
             Event outlookEvent = new Event
             {
-                Subject = $"Welkin Appointment: {welkinEvent.Modality} with {welkinPatient.FirstName} {welkinPatient.LastName} for {welkinUser.FirstName} {welkinUser.LastName}",
+                Subject = $"Welkin Appointment: {welkinEvent.EventMode} with {welkinPatient.FirstName} {welkinPatient.LastName} for {welkinUser.FirstName} {welkinUser.LastName}",
                 Body = new ItemBody
                 {
                     ContentType = BodyType.Html,
@@ -450,14 +450,14 @@ namespace OutlookWelkinSync
                 Start = new DateTimeTimeZone
                 {
                     DateTime = welkinEvent.IsAllDay 
-                        ? welkinEvent.Day.Value.Date.ToString() // Midnight day of
+                        ? welkinEvent.Start.Value.Date.ToString() // Midnight day of
                         : welkinEvent.Start.Value.ToString(), // Will be UTC
                     TimeZone = welkinUser.Timezone
                 },
                 End = new DateTimeTimeZone
                 {
                     DateTime = welkinEvent.IsAllDay 
-                        ? welkinEvent.Day.Value.Date.AddDays(1).ToString() // Midnight day after
+                        ? welkinEvent.Start.Value.Date.AddDays(1).ToString() // Midnight day after
                         : welkinEvent.End.Value.ToString(), // Will be UTC
                     TimeZone = welkinUser.Timezone
                 },

@@ -45,8 +45,7 @@ namespace OutlookWelkinSync
 
             Event linkedOutlookEvent = null; // From the configured shared calendar
             WelkinExternalId externalId = this.welkinClient.FindExternalMappingFor(this.welkinEvent);
-            WelkinCalendar calendar = this.welkinClient.RetrieveCalendar(this.welkinEvent.CalendarId);
-            WelkinWorker worker = this.welkinClient.RetrieveWorker(calendar.WorkerId);
+            WelkinUser worker = this.welkinClient.RetrieveUser(this.welkinEvent.HostId);
 
             if (externalId != null)
             {
@@ -71,7 +70,7 @@ namespace OutlookWelkinSync
             }
             else // An Outlook event needs to be created and linked
             {
-                WelkinPatient patient = this.welkinClient.RetrievePatient(this.welkinEvent.PatientId);
+                WelkinPatient patient = this.welkinClient.RetrievePatient(this.welkinEvent.Patient.Id);
                 // This will also create and persist the Outlook->Welkin link
                 linkedOutlookEvent = this.outlookClient.CreateOutlookEventFromWelkinEvent(
                     this.welkinEvent, worker, this.sharedCalendarOutlookUser, patient, this.sharedOutlookCalendar.Id);

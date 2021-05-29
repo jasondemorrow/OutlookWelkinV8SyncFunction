@@ -43,8 +43,8 @@ namespace OutlookWelkinSync
             }
 
             WelkinLastSyncEntry lastSync = welkinClient.RetrieveLastSyncFor(welkinEvent);
-            if (lastSync != null && lastSync.IsValid() && this.welkinEvent.Updated != null && 
-                lastSync.Time >= this.welkinEvent.Updated.Value.ToUniversalTime())
+            if (lastSync != null && lastSync.IsValid() && this.welkinEvent.UpdatedAt != null && 
+                lastSync.Time >= this.welkinEvent.UpdatedAt.Value.ToUniversalTime())
             {
                 this.logger.LogInformation($"Welkin event {this.welkinEvent.Id} hasn't been updated since its last sync. Skipping...");
                 return false;
