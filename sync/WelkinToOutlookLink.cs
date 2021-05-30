@@ -27,28 +27,14 @@ namespace OutlookWelkinSync
         /// <returns>True if a new link was created, otherwise false.</returns>
         public bool CreateIfMissing()
         {
-            WelkinExternalId externalId = welkinClient.FindExternalMappingFor(this.sourceWelkinEvent, this.targetOutlookEvent);
+            string linkedOutlookId = this.sourceWelkinEvent.LinkedOutlookEventId;
 
-            if (externalId == null || string.IsNullOrEmpty(externalId.ExternalId))
+            if (string.IsNullOrEmpty(this.sourceWelkinEvent.LinkedOutlookEventId))
             {
                 this.logger.LogInformation($"Linking Welkin event {this.sourceWelkinEvent.Id} to Outlook event {this.targetOutlookEvent.ICalUId}.");
-                
-                /**
-                * Outlook's UUID for calendar events, ICalUId, is not a properly formed GUID, which the Welkin External ID API expects.
-                * We use a hashing method to generate a consistent, synthetic GUID for ICalUId, appending its original value to the 
-                * namespace string stored in the External ID. This makes the API happy while allowing us to derive the GUID
-                * from ICalUId when necessary and vice versa, in a way that is adequately collision-resistent.
-                */
-                string derivedGuid = Guids.FromText(this.targetOutlookEvent.ICalUId).ToString();
-                WelkinExternalId welkinExternalId = new WelkinExternalId
-                {
-                    Resource = Constants.CalendarEventResourceName,
-                    ExternalId = derivedGuid,
-                    InternalId = this.sourceWelkinEvent.Id,
-                    Namespace = Constants.WelkinEventExtensionNamespacePrefix + this.targetOutlookEvent.ICalUId
-                };
-                welkinExternalId = welkinClient.CreateOrUpdateExternalId(welkinExternalId); // TODO: Catch exception here and roll back
-                string outlookICalId = welkinExternalId?.Namespace?.Substring(Constants.WelkinEventExtensionNamespacePrefix.Length);
+                this.sourceWelkinEvent.LinkedOutlookEventId = this.targetOutlookEvent.ICalUId;
+                WelkinEvent savedEvent = this.welkinClient.CreateOrUpdateEvent(this.sourceWelkinEvent, this.sourceWelkinEvent.Id);
+                string outlookICalId = savedEvent.LinkedOutlookEventId;
 
                 if (outlookICalId != null && outlookICalId.Equals(this.targetOutlookEvent.ICalUId))
                 {

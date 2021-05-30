@@ -2,6 +2,7 @@ namespace OutlookWelkinSync
 {
     using System;
     using System.Collections.Generic;
+    using System.Globalization;
     using System.Linq;
     using Microsoft.Graph;
     using Newtonsoft.Json;
@@ -116,6 +117,49 @@ namespace OutlookWelkinSync
                         !string.IsNullOrEmpty(p.ParticipantRole) && 
                         p.ParticipantRole.Equals(Constants.WelkinParticipantRolePatient, StringComparison.InvariantCultureIgnoreCase)
                     ).FirstOrDefault();
+            }
+        }
+
+        public string LinkedOutlookEventId
+        {
+            get
+            {
+                if (this.AdditionalInfo == null || !this.AdditionalInfo.ContainsKey(Constants.WelkinLinkedOutlookEventIdKey))
+                {
+                    return null;
+                }
+                return this.AdditionalInfo[Constants.WelkinLinkedOutlookEventIdKey];
+            }
+            set
+            {
+                if (this.AdditionalInfo == null)
+                {
+                    this.AdditionalInfo = new Dictionary<string, string>();
+                }
+                this.AdditionalInfo[Constants.WelkinLinkedOutlookEventIdKey] = value;
+            }
+        }
+
+        public DateTimeOffset? LastSyncDateTime
+        {
+            get
+            {
+                if (this.AdditionalInfo == null || !this.AdditionalInfo.ContainsKey(Constants.WelkinEventLastSyncKey))
+                {
+                    return null;
+                }
+                string dateTimeString = this.AdditionalInfo[Constants.WelkinEventLastSyncKey];
+                return DateTimeOffset.ParseExact(dateTimeString, "o", CultureInfo.InvariantCulture);
+            }
+            set
+            {
+                string dateTimeString = 
+                    value.HasValue ? value.Value.ToString("o", CultureInfo.InvariantCulture) : null;
+                if (this.AdditionalInfo == null)
+                {
+                    this.AdditionalInfo = new Dictionary<string, string>();
+                }
+                this.AdditionalInfo[Constants.WelkinEventLastSyncKey] = dateTimeString;
             }
         }
 

@@ -44,12 +44,12 @@ namespace OutlookWelkinSync
             }
 
             Event linkedOutlookEvent = null; // From the configured shared calendar
-            WelkinExternalId externalId = this.welkinClient.FindExternalMappingFor(this.welkinEvent);
+            string syncedOutlookEventId = this.welkinEvent.LinkedOutlookEventId;
             WelkinUser worker = this.welkinClient.RetrieveUser(this.welkinEvent.HostId);
 
-            if (externalId != null)
+            if (!string.IsNullOrEmpty(this.welkinEvent.LinkedOutlookEventId))
             {
-                string outlookICalId = externalId.Namespace.Substring(Constants.WelkinEventExtensionNamespacePrefix.Length);
+                string outlookICalId = this.welkinEvent.LinkedOutlookEventId;
                 linkedOutlookEvent = this.outlookClient.RetrieveEventWithICalId(
                     this.sharedCalendarOutlookUser, 
                     outlookICalId, 
@@ -88,24 +88,20 @@ namespace OutlookWelkinSync
                 }
             }
 
-            WelkinLastSyncEntry lastSync = welkinClient.RetrieveLastSyncFor(this.welkinEvent);
-            this.welkinClient.UpdateLastSyncFor(this.welkinEvent, lastSync?.ExternalId?.Id);
+            this.welkinEvent.LastSyncDateTime = DateTimeOffset.UtcNow.AddSeconds(Constants.SecondsToAccountForEventualConsistency);
+            this.welkinClient.CreateOrUpdateEvent(this.welkinEvent, this.welkinEvent.Id);
             return linkedOutlookEvent;
         }
         public override void Cleanup()
         {
             if (this.welkinClient.IsPlaceHolderEvent(this.welkinEvent))
             {
-                WelkinExternalId externalId = this.welkinClient.FindExternalMappingFor(this.welkinEvent);
-                User outlookUser = this.sharedCalendarOutlookUser; // TODO: consolidate this with named impl. in base
+                User outlookUser = this.sharedCalendarOutlookUser;
+                string outlookICalId = this.welkinEvent.LinkedOutlookEventId;
                 Event outlookEvent = null;
-                int idxId = (externalId == null || string.IsNullOrEmpty(externalId.Namespace))? 
-                                -1 : 
-                                externalId.Namespace.IndexOf(Constants.WelkinEventExtensionNamespacePrefix);
 
-                if (idxId > -1 && outlookUser != null)
+                if (!string.IsNullOrEmpty(outlookICalId) && outlookUser != null)
                 {
-                    string outlookICalId = externalId.Namespace.Substring(Constants.WelkinEventExtensionNamespacePrefix.Length);
                     try
                     {
                         outlookEvent = this.outlookClient.RetrieveEventWithICalId(outlookUser, outlookICalId);
@@ -117,7 +113,7 @@ namespace OutlookWelkinSync
                 }
 
                 // If we can't find either the externally mapped Outlook event for this placeholder event, clean it up
-                if (externalId != null && outlookEvent == null)
+                if (!string.IsNullOrEmpty(outlookICalId) && outlookEvent == null)
                 {
                     this.logger.LogWarning($"Welkin event {this.welkinEvent.Id} is an orphaned placeholder event for Outlook user " + 
                                            $"{outlookUser.UserPrincipalName} and will be deleted. Event details: {welkinEvent.ToString()}.");

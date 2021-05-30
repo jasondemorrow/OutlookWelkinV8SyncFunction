@@ -3,7 +3,7 @@ namespace OutlookWelkinSync
     using System;
     using Newtonsoft.Json;
     
-    public class WelkinUser
+    public class WelkinUser : IAdminEntity
     {
         [JsonProperty("id")]
         public string Id { get; set; }

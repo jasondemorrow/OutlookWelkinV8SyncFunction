@@ -42,9 +42,9 @@ namespace OutlookWelkinSync
                 return false;
             }
 
-            WelkinLastSyncEntry lastSync = welkinClient.RetrieveLastSyncFor(welkinEvent);
-            if (lastSync != null && lastSync.IsValid() && this.welkinEvent.UpdatedAt != null && 
-                lastSync.Time >= this.welkinEvent.UpdatedAt.Value.ToUniversalTime())
+            DateTimeOffset? lastSyncTime = welkinEvent.LastSyncDateTime;
+            if (lastSyncTime.HasValue && this.welkinEvent.UpdatedAt != null && 
+                lastSyncTime >= this.welkinEvent.UpdatedAt.Value.ToUniversalTime())
             {
                 this.logger.LogInformation($"Welkin event {this.welkinEvent.Id} hasn't been updated since its last sync. Skipping...");
                 return false;

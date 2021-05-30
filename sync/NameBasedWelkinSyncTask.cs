@@ -1,5 +1,6 @@
 namespace OutlookWelkinSync
 {
+    using System;
     using Microsoft.Extensions.Logging;
     using Microsoft.Graph;
     
@@ -23,14 +24,14 @@ namespace OutlookWelkinSync
                 return null;
             }
 
-            WelkinExternalId externalId = this.welkinClient.FindExternalMappingFor(this.welkinEvent);
             WelkinUser practitioner = this.welkinClient.RetrieveUser(welkinEvent.HostId);
+            string syncedOutlookEventId = this.welkinEvent.LinkedOutlookEventId;
             Event syncedTo = null;
 
             // If there's already an Outlook event linked to this Welkin event
-            if (externalId != null && !string.IsNullOrEmpty(externalId.Namespace))
+            if (!string.IsNullOrEmpty(this.welkinEvent.LinkedOutlookEventId))
             {
-                string outlookICalId = externalId.Namespace.Substring(Constants.WelkinEventExtensionNamespacePrefix.Length);
+                string outlookICalId = this.welkinEvent.LinkedOutlookEventId;
                 this.logger.LogInformation($"Found Outlook event {outlookICalId} associated with Welkin event {welkinEvent.Id}.");
                 User outlookUser = this.outlookClient.FindUserCorrespondingTo(practitioner);
                 syncedTo = this.outlookClient.RetrieveEventWithICalId(outlookUser, outlookICalId);
@@ -70,8 +71,8 @@ namespace OutlookWelkinSync
                 }
             }
 
-            WelkinLastSyncEntry lastSync = welkinClient.RetrieveLastSyncFor(this.welkinEvent);
-            this.welkinClient.UpdateLastSyncFor(this.welkinEvent, lastSync?.ExternalId?.Id);
+            this.welkinEvent.LastSyncDateTime = DateTimeOffset.UtcNow.AddSeconds(Constants.SecondsToAccountForEventualConsistency);
+            this.welkinClient.CreateOrUpdateEvent(this.welkinEvent, this.welkinEvent.Id);
             return syncedTo;
         }
 
@@ -79,17 +80,13 @@ namespace OutlookWelkinSync
         {
             if (this.welkinClient.IsPlaceHolderEvent(this.welkinEvent))
             {
-                WelkinExternalId externalId = this.welkinClient.FindExternalMappingFor(this.welkinEvent);
-                WelkinUser worker = this.welkinClient.RetrieveUser(this.welkinEvent.HostId);
-                User outlookUser = this.outlookClient.FindUserCorrespondingTo(worker);
+                WelkinUser practitioner = this.welkinClient.RetrieveUser(this.welkinEvent.HostId);
+                User outlookUser = this.outlookClient.FindUserCorrespondingTo(practitioner);
+                string outlookICalId = this.welkinEvent.LinkedOutlookEventId;
                 Event outlookEvent = null;
-                int idxId = (externalId == null || string.IsNullOrEmpty(externalId.Namespace))? 
-                                -1 : 
-                                externalId.Namespace.IndexOf(Constants.WelkinEventExtensionNamespacePrefix);
 
-                if (idxId > -1 && outlookUser != null)
+                if (!string.IsNullOrEmpty(outlookICalId) && outlookUser != null)
                 {
-                    string outlookICalId = externalId.Namespace.Substring(Constants.WelkinEventExtensionNamespacePrefix.Length);
                     try
                     {
                         outlookEvent = this.outlookClient.RetrieveEventWithICalId(outlookUser, outlookICalId);
@@ -101,7 +98,7 @@ namespace OutlookWelkinSync
                 }
 
                 // If we can't find the externally mapped Outlook event for this placeholder event, clean it up
-                if (externalId != null && outlookEvent == null)
+                if (!string.IsNullOrEmpty(outlookICalId) && outlookEvent == null)
                 {
                     this.logger.LogWarning($"Welkin event {this.welkinEvent.Id} is an orphaned placeholder event for Outlook user " + 
                                            $"{outlookUser.UserPrincipalName} and will be cancelled. Event details: {welkinEvent.ToString()}.");

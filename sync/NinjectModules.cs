@@ -19,7 +19,7 @@ namespace OutlookWelkinSync
                 Bind<string>()
                     .ToMethod((context) => Environment.GetEnvironmentVariable(Constants.DummyPatientEnvVarName))
                     .InSingletonScope()
-                    .Named("DummyPatientId");
+                    .Named(Constants.DummyPatientEnvVarName);
                 Bind<OutlookClient>().To<OutlookClient>().InSingletonScope();
                 string sandboxMode = Environment.GetEnvironmentVariable(Constants.WelkinUseSandboxKey)?.ToLowerInvariant() ?? "false";
                 bool useSandbox = Boolean.Parse(sandboxMode);

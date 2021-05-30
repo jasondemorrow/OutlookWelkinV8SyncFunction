@@ -30,6 +30,7 @@ namespace OutlookWelkinSync
         private readonly string token;
         private readonly string dummyPatientId;
         private readonly string baseEndpointUrl;
+        private readonly string adminEndpointUrl;
 
         public WelkinClient(
             WelkinConfig config, 
@@ -43,7 +44,8 @@ namespace OutlookWelkinSync
             this.logger = logger;
             this.dummyPatientId = dummyPatientId;
             string baseUrl = useSandbox ? "https://api.sandbox.welkincloud.io" : "https://api.live.welkincloud.io";
-            string authUrl = $"{baseUrl}/{tenantName}/admin/api_clients/{this.config.ClientId}";
+            this.adminEndpointUrl = $"{baseUrl}/{tenantName}/admin/";
+            string authUrl = $"{this.adminEndpointUrl}api_clients/{this.config.ClientId}";
             this.baseEndpointUrl = $"{baseUrl}/{tenantName}/{instanceName}/";
             
             Dictionary<string, string> values = new Dictionary<string, string> 
@@ -149,7 +151,17 @@ namespace OutlookWelkinSync
         private IEnumerable<T> SearchObjects<T>(string path, Dictionary<string, string> parameters = null)
         {
             string url = $"{this.baseEndpointUrl}{path}";
-            string key = url + "?" + string.Join("&", parameters.Select(e => $"{e.Key}={e.Value}"));
+
+            if (typeof(IAdminEntity).IsAssignableFrom(typeof(T)))
+            {
+                url = $"{this.adminEndpointUrl}{path}";
+            }
+
+            string key = url + "?";
+            if (parameters != null && parameters.Count > 0)
+            {
+                key += string.Join("&", parameters.Select(e => $"{e.Key}={e.Value}"));
+            }
             IEnumerable<T> found;
 
             if (internalCache.TryGetValue(key, out found))
@@ -195,8 +207,22 @@ namespace OutlookWelkinSync
 
             IEnumerable<T> page = JsonConvert.DeserializeObject<IEnumerable<T>>(data.ToString());
             retrieved.AddRange(page);
-            int totalPages = result["totalPages"].ToObject<int>();
-            int currentPage = result["pageable"]["pageNumber"].ToObject<int>();
+            int totalPages = 1;
+            int currentPage = 1;
+
+            if (result.ContainsKey("totalPages"))
+            {
+                totalPages = result["totalPages"].ToObject<int>();
+            }
+            else if(result.ContainsKey("metaInfo"))
+            {
+                JObject metaInfo = result["metaInfo"].ToObject<JObject>();
+                totalPages = metaInfo["totalPages"].ToObject<int>();
+            }
+            else
+            {
+                this.logger.LogWarning($"Total pages not found at {url}.");
+            }
 
             while (currentPage < totalPages)
             {
@@ -267,50 +293,6 @@ namespace OutlookWelkinSync
             return this.CreateOrUpdateObject(welkinEvent, Constants.V8CalendarEventResourceName, welkinEvent.Id);
         }
 
-        public WelkinCalendar RetrieveCalendar(string calendarId)
-        {
-            return this.RetrieveObject<WelkinCalendar>(calendarId, Constants.CalendarResourceName);
-        }
-
-        public WelkinCalendar RetrieveCalendarFor(WelkinUser user)
-        {
-            string url = $"{config.ApiUrl}{Constants.CalendarResourceName}?worker={user.UserName}";
-            WelkinCalendar found;
-            if (internalCache.TryGetValue(url, out found))
-            {
-                return found;
-            }
-            var client = new RestClient(url);
-            var request = new RestRequest(Method.GET);
-            request.AddHeader("authorization", "Bearer " + this.token);
-            request.AddHeader("cache-control", "no-cache");
-            var response = client.Execute(request);
-            JObject result = JsonConvert.DeserializeObject(response.Content) as JObject;
-            JArray data = result.First?.ToObject<JProperty>()?.Value.ToObject<JArray>();
-            if (data == null)
-            {
-                return null;
-            }
-            JObject calendar = data.First?.ToObject<JObject>();
-            if (calendar == null)
-            {
-                return null;
-            }
-            found = JsonConvert.DeserializeObject<WelkinCalendar>(calendar.ToString());
-            internalCache.Set(url, found, cacheEntryOptions);
-            return found;
-        }
-
-        public WelkinExternalId CreateOrUpdateExternalId(WelkinExternalId external, string id = null)
-        {
-            return this.CreateOrUpdateObject(external, Constants.ExternalIdResourceName, id);
-        }
-
-        public void DeleteExternalId(WelkinExternalId externalId)
-        {
-            this.DeleteObject(externalId.Id, Constants.ExternalIdResourceName);
-        }
-
         public WelkinPatient RetrievePatient(string patientId)
         {
             return this.RetrieveObject<WelkinPatient>(patientId, Constants.WelkinPatientResourceName);
@@ -349,76 +331,6 @@ namespace OutlookWelkinSync
                 internalCache.Set(user.Email.ToLowerInvariant(), user, cacheEntryOptions);
             }
             return user;
-        }
-
-        public WelkinExternalId FindExternalMappingFor(WelkinEvent internalEvent, Event externalEvent = null)
-        {
-            Dictionary<string, string> parameters = new Dictionary<string, string>();
-            if (externalEvent != null)
-            {
-                parameters["namespace"] = Constants.WelkinEventExtensionNamespacePrefix + externalEvent.ICalUId;
-                string derivedGuid = Guids.FromText(externalEvent.ICalUId).ToString();
-                parameters["external_id"] = derivedGuid;
-            }
-            parameters["resource"] = Constants.V8CalendarEventResourceName;
-            parameters["welkin_id"] = internalEvent.Id;
-            IEnumerable<WelkinExternalId> foundLinks = SearchObjects<WelkinExternalId>(Constants.ExternalIdResourceName, parameters);
-            return foundLinks
-                        .Where(x => x.Namespace.StartsWith(Constants.WelkinEventExtensionNamespacePrefix))
-                        .FirstOrDefault();
-        }
-
-        public IEnumerable<WelkinExternalId> FindExternalEventMappingsUpdatedBetween(DateTimeOffset start, DateTimeOffset end)
-        {
-            Dictionary<string, string> parameters = new Dictionary<string, string>();
-            parameters["resource"] = Constants.V8CalendarEventResourceName;
-            parameters["page[from]"] = start.ToString("o");
-            parameters["page[to]"] = end.ToString("o");
-            IEnumerable<WelkinExternalId> foundLinks = SearchObjects<WelkinExternalId>(Constants.ExternalIdResourceName, parameters);
-            return foundLinks.Where(x => x.Namespace.StartsWith(Constants.WelkinEventExtensionNamespacePrefix));
-        }
-
-        public WelkinLastSyncEntry RetrieveLastSyncFor(WelkinEvent internalEvent)
-        {
-            // We store last sync time for an event as an external ID. This is a hack to make event types extensible.
-            Dictionary<string, string> parameters = new Dictionary<string, string>();
-            parameters["resource"] = Constants.V8CalendarEventResourceName;
-            parameters["welkin_id"] = internalEvent.Id;
-            IEnumerable<WelkinExternalId> foundLinks = SearchObjects<WelkinExternalId>(Constants.ExternalIdResourceName, parameters);
-            if (foundLinks == null || !foundLinks.Any())
-            {
-                return null;
-            }
-            WelkinExternalId externalId =
-                foundLinks
-                    .Where(x => x.Namespace.StartsWith(Constants.WelkinLastSyncExtensionNamespace))
-                    .FirstOrDefault();
-            return (externalId == null) ? null : new WelkinLastSyncEntry(externalId);
-        }
-
-        public bool UpdateLastSyncFor(WelkinEvent internalEvent, string existingId = null, DateTimeOffset? lastSync = null)
-        {
-            if (lastSync == null)
-            {
-                lastSync = DateTimeOffset.UtcNow.AddSeconds(Constants.SecondsToAccountForEventualConsistency);
-            }
-
-            // We store last sync time for an event as an external ID namespace. 
-            // This is a hack to make event types extensible.
-            string isoDate = lastSync.Value.ToString("o", CultureInfo.InvariantCulture);
-            string syntheticNamespace = Constants.WelkinLastSyncExtensionNamespace + ":::" + isoDate;
-
-            WelkinExternalId welkinExternalId = new WelkinExternalId
-            {
-                Id = existingId,
-                Resource = Constants.V8CalendarEventResourceName,
-                ExternalId = Guid.NewGuid().ToString(), // does not matter
-                InternalId = internalEvent.Id,
-                Namespace = syntheticNamespace
-            };
-            welkinExternalId = this.CreateOrUpdateExternalId(welkinExternalId, existingId);
-
-            return welkinExternalId != null && welkinExternalId.InternalId.Equals(internalEvent.Id);
         }
 
         public WelkinEvent GeneratePlaceholderEventForHost(WelkinUser host)

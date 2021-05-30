@@ -279,7 +279,20 @@ namespace OutlookWelkinSync
                 return retrieved;
             }
 
-            retrieved = this.graphClient.Users[email].Request().GetAsync().GetAwaiter().GetResult();
+            IUserRequestBuilder userRequestBuilder = this.graphClient.Users[email];
+            if (userRequestBuilder == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                retrieved = userRequestBuilder.Request().GetAsync().GetAwaiter().GetResult();
+            }
+            catch (NullReferenceException)
+            {
+                return null;
+            }
 
             if (retrieved != null)
             {

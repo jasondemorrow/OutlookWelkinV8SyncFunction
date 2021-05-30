@@ -14,6 +14,8 @@ namespace OutlookWelkinSync
         public const string WelkinTenantNameKey = "WelkinV8TenantName";
         public const string WelkinInstanceNameKey = "WelkinV8InstanceName";
         public const string WelkinUseSandboxKey = "WelkinV8UseSandbox";
+        public const string WelkinEventLastSyncKey = "WelkinEventLastSync";
+        public const string WelkinLinkedOutlookEventIdKey = "LinkedOutlookEventId";
         public const string OutlookLinkedWelkinEventIdKey = "LinkedWelkinEventId";
         public const string OutlookPlaceHolderEventKey = "IsOutlookPlaceHolderEvent";
         public const string OutlookLastSyncDateTimeKey = "LastSyncDateTime";
@@ -30,7 +32,7 @@ namespace OutlookWelkinSync
         public const string WelkinParticipantRolePatient = "patient";
         public const string WelkinParticipantRolePsm = "psm";
         public const string ExternalIdResourceName = "external_ids";
-        public const string WelkinUserResourceName = "admin/users";
+        public const string WelkinUserResourceName = "users";
         public const string WelkinPatientResourceName = "patients";
         public const string SyncNamespaceDateSeparator = ":::";
         public const string DummyPatientEnvVarName = "WelkinDummyPatientId";
