@@ -11,6 +11,7 @@ namespace OutlookWelkinSync
     using Microsoft.Extensions.Logging;
     using Microsoft.Graph;
     using Newtonsoft.Json;
+    using Newtonsoft.Json.Converters;
     using Newtonsoft.Json.Linq;
     using Ninject;
     using RestSharp;
@@ -25,6 +26,16 @@ namespace OutlookWelkinSync
             new MemoryCacheEntryOptions()
                 .SetAbsoluteExpiration(TimeSpan.FromSeconds(180))
                 .SetSize(1);
+        private readonly JsonSerializerSettings jsonSerializerSettings = new JsonSerializerSettings
+        {
+            Converters = new JsonConverter[] {
+                //new IsoDateTimeAccuracyConverter(3)
+                new IsoDateTimeConverter
+                {
+                    DateTimeFormat = "yyyy'-'MM'-'dd'T'HH':'mm':'ss.fffZ"
+                }
+            }
+        };
         private readonly WelkinConfig config;
         private readonly ILogger logger;
         private readonly string token;
@@ -80,16 +91,19 @@ namespace OutlookWelkinSync
             var request = new RestRequest(method);
             request.AddHeader("authorization", "Bearer " + this.token);
             request.AddHeader("cache-control", "no-cache");
-            request.AddParameter("application/json", JsonConvert.SerializeObject(obj), ParameterType.RequestBody);
+            request.AddParameter("application/json", JsonConvert.SerializeObject(obj, jsonSerializerSettings), ParameterType.RequestBody);
 
             var response = client.Execute(request);
-            if (response.StatusCode != System.Net.HttpStatusCode.OK)
+            if (response.StatusCode != System.Net.HttpStatusCode.OK && response.StatusCode != System.Net.HttpStatusCode.Created)
             {
                 throw new Exception($"HTTP status {response.StatusCode} with message '{response.ErrorMessage}' and body '{response.Content}'");
             }
 
-            JObject result = JsonConvert.DeserializeObject(response.Content) as JObject;
-            JObject data = result?.First?.ToObject<JProperty>()?.Value.ToObject<JObject>();
+            JObject data = JsonConvert.DeserializeObject(response.Content) as JObject;
+            if (data != null && data.ContainsKey("data"))
+            {
+                data = data["data"].ToObject<JProperty>()?.Value.ToObject<JObject>();
+            }
             T updated = (data == null) ? default(T) : JsonConvert.DeserializeObject<T>(data.ToString());
 
             internalCache.Set(url, updated, cacheEntryOptions);
@@ -110,9 +124,12 @@ namespace OutlookWelkinSync
             request.AddHeader("authorization", "Bearer " + this.token);
             request.AddHeader("cache-control", "no-cache");
 
-            foreach (KeyValuePair<string, string> kvp in parameters ?? Enumerable.Empty<KeyValuePair<string, string>>())
+            if (parameters != null)
             {
-                request.AddParameter(kvp.Key, kvp.Value);
+                foreach (KeyValuePair<string, string> kvp in parameters)
+                {
+                    request.AddParameter(kvp.Key, kvp.Value);
+                }
             }
 
             var response = client.Execute(request);
