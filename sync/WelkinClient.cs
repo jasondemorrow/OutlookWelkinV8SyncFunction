@@ -282,7 +282,18 @@ namespace OutlookWelkinSync
             parameters["from"] = start.ToFormattedString("o3");
             parameters["to"] = end.ToFormattedString("o3");
             IEnumerable<WelkinEvent> retrieved = SearchObjects<WelkinEvent>(Constants.V8CalendarEventResourceName, parameters);
-            return retrieved.Where(this.IsValid);
+            // De-dupe since Welkin might send us duplicate events
+            HashSet<string> uniqueIds = new HashSet<string>();
+            IList<WelkinEvent> results = new List<WelkinEvent>();
+            foreach(WelkinEvent evt in retrieved)
+            {
+                if(IsValid(evt) && !uniqueIds.Contains(evt.Id))
+                {
+                    results.Add(evt);
+                    uniqueIds.Add(evt.Id);
+                }
+            }
+            return results;
         }
 
         private bool IsValid(WelkinEvent evt)

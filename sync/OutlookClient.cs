@@ -324,9 +324,8 @@ namespace OutlookWelkinSync
                         return retrieved;
                     }
                 }
-                catch (ServiceException ex)
+                catch (ServiceException)
                 {
-                    //this.logger.LogInformation($"{email}:{ex.StatusCode}");
                 }
             }
             return null;
