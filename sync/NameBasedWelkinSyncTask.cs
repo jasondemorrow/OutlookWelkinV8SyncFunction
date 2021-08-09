@@ -46,7 +46,7 @@ namespace OutlookWelkinSync
             }
             else // An Outlook event needs to be created and linked
             {
-                WelkinPatient patient = this.welkinClient.RetrievePatient(this.welkinEvent.Patient.Id);
+                WelkinPatient patient = this.welkinClient.RetrievePatient(this.welkinEvent.Patient.ParticipantId);
                 // This will also create and persist the Outlook->Welkin link
                 syncedTo = this.outlookClient.CreateOutlookEventFromWelkinEvent(this.welkinEvent, practitioner, patient);
                 this.logger.LogInformation($"Successfully created a new Outlook placeholder event {syncedTo.ICalUId} in user calendar for {practitioner.Email}.");

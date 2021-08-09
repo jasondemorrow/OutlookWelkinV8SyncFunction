@@ -465,14 +465,14 @@ namespace OutlookWelkinSync
                     DateTime = welkinEvent.IsAllDay 
                         ? welkinEvent.Start.Value.Date.ToString() // Midnight day of
                         : welkinEvent.Start.Value.ToString(), // Will be UTC
-                    TimeZone = welkinUser.Timezone
+                    TimeZone = "UTC"
                 },
                 End = new DateTimeTimeZone
                 {
                     DateTime = welkinEvent.IsAllDay 
                         ? welkinEvent.Start.Value.Date.AddDays(1).ToString() // Midnight day after
                         : welkinEvent.End.Value.ToString(), // Will be UTC
-                    TimeZone = welkinUser.Timezone
+                    TimeZone = "UTC"
                 },
                 Organizer = new Recipient
                 {
@@ -484,12 +484,10 @@ namespace OutlookWelkinSync
                 }
             };
 
-            Event createdEvent = CalendarRequestBuilderFrom(outlookUser.UserPrincipalName, calendarId)
-                                        .Events
-                                        .Request()
-                                        .AddAsync(outlookEvent)
-                                        .GetAwaiter()
-                                        .GetResult();
+            ICalendarRequestBuilder calendarRequestBuilder = CalendarRequestBuilderFrom(outlookUser.UserPrincipalName, calendarId);
+            ICalendarEventsCollectionRequest eventsCollectionRequest = calendarRequestBuilder.Events.Request();
+            Task<Event> eventResult = eventsCollectionRequest.AddAsync(outlookEvent);
+            Event createdEvent = eventResult.GetAwaiter().GetResult();
             createdEvent.AdditionalData[Constants.OutlookUserObjectKey] = outlookUser;
 
             Dictionary<string, object> keyValuePairs = new Dictionary<string, object>();

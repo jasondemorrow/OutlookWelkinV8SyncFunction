@@ -2,16 +2,12 @@ namespace OutlookWelkinSync
 {
     using System;
     using System.Collections.Generic;
-    using System.Globalization;
     using System.Linq;
     using System.Net.Http;
     using System.Text;
-    using Jose;
     using Microsoft.Extensions.Caching.Memory;
     using Microsoft.Extensions.Logging;
-    using Microsoft.Graph;
     using Newtonsoft.Json;
-    using Newtonsoft.Json.Converters;
     using Newtonsoft.Json.Linq;
     using Ninject;
     using RestSharp;
@@ -26,16 +22,6 @@ namespace OutlookWelkinSync
             new MemoryCacheEntryOptions()
                 .SetAbsoluteExpiration(TimeSpan.FromSeconds(180))
                 .SetSize(1);
-        private readonly JsonSerializerSettings jsonSerializerSettings = new JsonSerializerSettings
-        {
-            Converters = new JsonConverter[] {
-                //new IsoDateTimeAccuracyConverter(3)
-                new IsoDateTimeConverter
-                {
-                    DateTimeFormat = "yyyy'-'MM'-'dd'T'HH':'mm':'ss.fffZ"
-                }
-            }
-        };
         private readonly WelkinConfig config;
         private readonly ILogger logger;
         private readonly string token;
@@ -91,7 +77,7 @@ namespace OutlookWelkinSync
             var request = new RestRequest(method);
             request.AddHeader("authorization", "Bearer " + this.token);
             request.AddHeader("cache-control", "no-cache");
-            request.AddParameter("application/json", JsonConvert.SerializeObject(obj, jsonSerializerSettings), ParameterType.RequestBody);
+            request.AddParameter("application/json", JsonConvert.SerializeObject(obj), ParameterType.RequestBody);
 
             var response = client.Execute(request);
             if (response.StatusCode != System.Net.HttpStatusCode.OK && response.StatusCode != System.Net.HttpStatusCode.Created)
@@ -110,7 +96,7 @@ namespace OutlookWelkinSync
             return updated;
         }
 
-        private T RetrieveObject<T>(string id, string path, Dictionary<string, string> parameters = null)
+        private T RetrieveObject<T>(string id, string path, Dictionary<string, string> parameters = null, bool serializeTopLevelObject = false)
         {
             string url = $"{this.baseEndpointUrl}{path}/{id}";
             T retrieved = default(T);
@@ -139,8 +125,15 @@ namespace OutlookWelkinSync
             }
 
             JObject result = JsonConvert.DeserializeObject(response.Content) as JObject;
-            JProperty body = result.First.ToObject<JProperty>();
-            retrieved = JsonConvert.DeserializeObject<T>(body.Value.ToString());
+            if (serializeTopLevelObject) 
+            {
+                retrieved = JsonConvert.DeserializeObject<T>(result.ToString());
+            }
+            else 
+            {
+                JProperty body = result.First.ToObject<JProperty>();
+                retrieved = JsonConvert.DeserializeObject<T>(body.Value.ToString());
+            }
 
             internalCache.Set(url, retrieved, cacheEntryOptions);
             return retrieved;
@@ -165,9 +158,9 @@ namespace OutlookWelkinSync
             internalCache.Remove(url);
         }
 
-        private IEnumerable<T> SearchObjects<T>(string path, Dictionary<string, string> parameters = null)
+        private IEnumerable<T> SearchObjects<T>(string path, Dictionary<string, string> parameters = null, bool adminEndpoint = false)
         {
-            string url = $"{this.baseEndpointUrl}{path}";
+            string url = adminEndpoint ? $"{this.adminEndpointUrl}{path}" : $"{this.baseEndpointUrl}{path}";
 
             if (typeof(IAdminEntity).IsAssignableFrom(typeof(T)))
             {
@@ -273,6 +266,8 @@ namespace OutlookWelkinSync
 
         public WelkinEvent CreateOrUpdateEvent(WelkinEvent evt, string id = null)
         {
+            evt.LocalEnd = null;   // Welkin will return "bad request"
+            evt.LocalStart = null; // if we try to set local times.
             return this.CreateOrUpdateObject(evt, Constants.V8CalendarEventResourceName, id);
         }
 
@@ -281,10 +276,8 @@ namespace OutlookWelkinSync
             return this.RetrieveObject<WelkinEvent>(eventId, Constants.V8CalendarEventResourceName);
         }
 
-        public IEnumerable<WelkinEvent> RetrieveEventsUpdatedSince(TimeSpan ago)
+        public IEnumerable<WelkinEvent> RetrieveEventsOccurring(DateTime start, DateTime end)
         {
-            DateTime end = DateTime.UtcNow;
-            DateTime start = end - ago;
             Dictionary<string, string> parameters = new Dictionary<string, string>();
             parameters["from"] = start.ToFormattedString("o3");
             parameters["to"] = end.ToFormattedString("o3");
@@ -312,17 +305,20 @@ namespace OutlookWelkinSync
 
         public WelkinPatient RetrievePatient(string patientId)
         {
-            return this.RetrieveObject<WelkinPatient>(patientId, Constants.WelkinPatientResourceName);
+            return this.RetrieveObject<WelkinPatient>(patientId, Constants.WelkinPatientResourceName, null, true);
         }
 
         public WelkinUser RetrieveUser(string userId)
         {
-            return this.RetrieveObject<WelkinUser>(userId, Constants.WelkinUserResourceName);
+            Dictionary<string, string> parameters = new Dictionary<string, string>();
+            parameters["ids"] = userId;
+            IEnumerable<WelkinUser> userResults = this.SearchObjects<WelkinUser>(Constants.WelkinUserResourceName, parameters, true);
+            return userResults.FirstOrDefault();
         }
 
         public IEnumerable<WelkinUser> RetrieveAllUsers()
         {
-            return this.SearchObjects<WelkinUser>(Constants.WelkinUserResourceName);
+            return this.SearchObjects<WelkinUser>(Constants.WelkinUserResourceName, null, true);
         }
 
         public WelkinUser FindUser(string email)

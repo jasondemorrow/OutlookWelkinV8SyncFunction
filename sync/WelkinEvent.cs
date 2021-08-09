@@ -90,16 +90,16 @@ namespace OutlookWelkinSync
         [JsonProperty("eventColor")]
         public string EventColor { get; set; }
 
-        [JsonProperty("startDateTime")]
+        [JsonProperty("startDateTime"), JsonConverter(typeof(WelkinUtcDateTimeConverter))]
         public DateTimeOffset? Start { get; set; }
 
-        [JsonProperty("endDateTime")]
+        [JsonProperty("endDateTime"), JsonConverter(typeof(WelkinUtcDateTimeConverter))]
         public DateTimeOffset? End { get; set; }
 
-        [JsonProperty("localStartDateTime")]
+        [JsonProperty("localStartDateTime"), JsonConverter(typeof(WelkinLocalDateTimeConverter))]
         public DateTimeOffset? LocalStart { get; set; }
 
-        [JsonProperty("localEndDateTime")]
+        [JsonProperty("localEndDateTime"), JsonConverter(typeof(WelkinLocalDateTimeConverter))]
         public DateTimeOffset? LocalEnd { get; set; }
 
         [JsonProperty("participants")]
