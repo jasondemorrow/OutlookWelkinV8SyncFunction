@@ -46,7 +46,7 @@ namespace OutlookWelkinSync
                 Throw.IfAnyAreNull(eventOwnerEmail, practitioner);
 
                 // Generate and save a placeholder event in Welkin with a dummy patient
-                WelkinEvent placeholderEvent = this.welkinClient.GeneratePlaceholderEventForHost(practitioner);
+                WelkinEvent placeholderEvent = this.welkinClient.GeneratePlaceholderEventForHost(practitioner, this.outlookEvent);
                 placeholderEvent.SyncWith(this.outlookEvent);
                 placeholderEvent = this.welkinClient.CreateOrUpdateEvent(placeholderEvent, placeholderEvent.Id);
 

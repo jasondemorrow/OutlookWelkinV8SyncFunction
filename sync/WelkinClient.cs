@@ -7,6 +7,7 @@ namespace OutlookWelkinSync
     using System.Text;
     using Microsoft.Extensions.Caching.Memory;
     using Microsoft.Extensions.Logging;
+    using Microsoft.Graph;
     using Newtonsoft.Json;
     using Newtonsoft.Json.Linq;
     using Ninject;
@@ -291,6 +292,9 @@ namespace OutlookWelkinSync
                 {
                     results.Add(evt);
                     uniqueIds.Add(evt.Id);
+                    // Cache these for later event requests
+                    string key = $"{this.baseEndpointUrl}{Constants.V8CalendarEventResourceName}/{evt.Id}";
+                    internalCache.Set(key, evt, cacheEntryOptions);
                 }
             }
             return results;
@@ -357,11 +361,12 @@ namespace OutlookWelkinSync
             return user;
         }
 
-        public WelkinEvent GeneratePlaceholderEventForHost(WelkinUser host)
+        public WelkinEvent GeneratePlaceholderEventForHost(WelkinUser host, Event outlookEvent)
         {
             WelkinEvent evt = new WelkinEvent();
             evt.HostId = host.Id;
             evt.IsAllDay = true;
+            evt.EventTitle = outlookEvent.Subject;
             evt.Start = DateTime.UtcNow.Date;
             evt.EventStatus = Constants.WelkinEventStatusScheduled;
             evt.EventMode = Constants.WelkinEventModeInPerson;
