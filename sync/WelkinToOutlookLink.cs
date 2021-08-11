@@ -27,14 +27,14 @@ namespace OutlookWelkinSync
         /// <returns>True if a new link was created, otherwise false.</returns>
         public bool CreateIfMissing()
         {
-            string linkedOutlookId = this.sourceWelkinEvent.LinkedOutlookEventId;
+            string linkedOutlookId = this.sourceWelkinEvent.ExternalId;
 
-            if (string.IsNullOrEmpty(this.sourceWelkinEvent.LinkedOutlookEventId))
+            if (string.IsNullOrEmpty(this.sourceWelkinEvent.ExternalId))
             {
                 this.logger.LogInformation($"Linking Welkin event {this.sourceWelkinEvent.Id} to Outlook event {this.targetOutlookEvent.ICalUId}.");
-                this.sourceWelkinEvent.LinkedOutlookEventId = this.targetOutlookEvent.ICalUId;
+                this.sourceWelkinEvent.ExternalId = this.targetOutlookEvent.ICalUId;
                 WelkinEvent savedEvent = this.welkinClient.CreateOrUpdateEvent(this.sourceWelkinEvent, this.sourceWelkinEvent.Id);
-                string outlookICalId = savedEvent.LinkedOutlookEventId;
+                string outlookICalId = savedEvent.ExternalId;
 
                 if (outlookICalId != null && outlookICalId.Equals(this.targetOutlookEvent.ICalUId))
                 {

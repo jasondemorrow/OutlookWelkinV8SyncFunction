@@ -25,13 +25,13 @@ namespace OutlookWelkinSync
             }
 
             WelkinUser practitioner = this.welkinClient.RetrieveUser(welkinEvent.HostId);
-            string syncedOutlookEventId = this.welkinEvent.LinkedOutlookEventId;
+            string syncedOutlookEventId = this.welkinEvent.ExternalId;
             Event syncedTo = null;
 
             // If there's already an Outlook event linked to this Welkin event
-            if (!string.IsNullOrEmpty(this.welkinEvent.LinkedOutlookEventId))
+            if (!string.IsNullOrEmpty(this.welkinEvent.ExternalId))
             {
-                string outlookICalId = this.welkinEvent.LinkedOutlookEventId;
+                string outlookICalId = this.welkinEvent.ExternalId;
                 this.logger.LogInformation($"Found Outlook event {outlookICalId} associated with Welkin event {welkinEvent.Id}.");
                 User outlookUser = this.outlookClient.FindUserCorrespondingTo(practitioner);
                 syncedTo = this.outlookClient.RetrieveEventWithICalId(outlookUser, outlookICalId);
@@ -71,7 +71,7 @@ namespace OutlookWelkinSync
                 }
             }
 
-            this.welkinEvent.LastSyncDateTime = DateTimeOffset.UtcNow.AddSeconds(Constants.SecondsToAccountForEventualConsistency);
+            this.welkinEvent.ExternalIdUpdatedAt = DateTimeOffset.UtcNow.AddSeconds(Constants.SecondsToAccountForEventualConsistency);
             this.welkinClient.CreateOrUpdateEvent(this.welkinEvent, this.welkinEvent.Id);
             return syncedTo;
         }
@@ -82,7 +82,7 @@ namespace OutlookWelkinSync
             {
                 WelkinUser practitioner = this.welkinClient.RetrieveUser(this.welkinEvent.HostId);
                 User outlookUser = this.outlookClient.FindUserCorrespondingTo(practitioner);
-                string outlookICalId = this.welkinEvent.LinkedOutlookEventId;
+                string outlookICalId = this.welkinEvent.ExternalId;
                 Event outlookEvent = null;
 
                 if (!string.IsNullOrEmpty(outlookICalId) && outlookUser != null)

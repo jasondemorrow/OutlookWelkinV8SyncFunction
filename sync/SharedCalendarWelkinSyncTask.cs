@@ -44,12 +44,12 @@ namespace OutlookWelkinSync
             }
 
             Event linkedOutlookEvent = null; // From the configured shared calendar
-            string syncedOutlookEventId = this.welkinEvent.LinkedOutlookEventId;
+            string syncedOutlookEventId = this.welkinEvent.ExternalId;
             WelkinUser worker = this.welkinClient.RetrieveUser(this.welkinEvent.HostId);
 
-            if (!string.IsNullOrEmpty(this.welkinEvent.LinkedOutlookEventId))
+            if (!string.IsNullOrEmpty(this.welkinEvent.ExternalId))
             {
-                string outlookICalId = this.welkinEvent.LinkedOutlookEventId;
+                string outlookICalId = this.welkinEvent.ExternalId;
                 linkedOutlookEvent = this.outlookClient.RetrieveEventWithICalId(
                     this.sharedCalendarOutlookUser, 
                     outlookICalId, 
@@ -88,7 +88,7 @@ namespace OutlookWelkinSync
                 }
             }
 
-            this.welkinEvent.LastSyncDateTime = DateTimeOffset.UtcNow.AddSeconds(Constants.SecondsToAccountForEventualConsistency);
+            this.welkinEvent.ExternalIdUpdatedAt = DateTimeOffset.UtcNow.AddSeconds(Constants.SecondsToAccountForEventualConsistency);
             this.welkinClient.CreateOrUpdateEvent(this.welkinEvent, this.welkinEvent.Id);
             return linkedOutlookEvent;
         }
@@ -97,7 +97,7 @@ namespace OutlookWelkinSync
             if (this.welkinClient.IsPlaceHolderEvent(this.welkinEvent))
             {
                 User outlookUser = this.sharedCalendarOutlookUser;
-                string outlookICalId = this.welkinEvent.LinkedOutlookEventId;
+                string outlookICalId = this.welkinEvent.ExternalId;
                 Event outlookEvent = null;
 
                 if (!string.IsNullOrEmpty(outlookICalId) && outlookUser != null)

@@ -42,7 +42,7 @@ namespace OutlookWelkinSync
                 return false;
             }
 
-            DateTimeOffset? lastSyncTime = welkinEvent.LastSyncDateTime;
+            DateTimeOffset? lastSyncTime = welkinEvent.ExternalIdUpdatedAt;
             if (lastSyncTime.HasValue && this.welkinEvent.UpdatedAt != null && 
                 lastSyncTime >= this.welkinEvent.UpdatedAt.Value.ToUniversalTime())
             {

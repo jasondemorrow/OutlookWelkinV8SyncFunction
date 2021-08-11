@@ -2,7 +2,6 @@ namespace OutlookWelkinSync
 {
     using System;
     using System.Collections.Generic;
-    using System.Globalization;
     using System.Linq;
     using Microsoft.Graph;
     using Newtonsoft.Json;
@@ -57,10 +56,10 @@ namespace OutlookWelkinSync
         [JsonProperty("allDayEvent")]
         public bool IsAllDay { get; set; }
 
-        [JsonProperty("updatedAt", NullValueHandling=NullValueHandling.Ignore)]
+        [JsonProperty("updatedAt", NullValueHandling=NullValueHandling.Ignore), JsonConverter(typeof(WelkinUtcDateTimeConverter))]
         public DateTimeOffset? UpdatedAt { get; set; }
 
-        [JsonProperty("createdAt", NullValueHandling=NullValueHandling.Ignore)]
+        [JsonProperty("createdAt", NullValueHandling=NullValueHandling.Ignore), JsonConverter(typeof(WelkinUtcDateTimeConverter))]
         public DateTimeOffset? CreatedAt { get; set; }
 
         [JsonProperty("updatedBy")]
@@ -86,6 +85,12 @@ namespace OutlookWelkinSync
 
         [JsonProperty("eventMode")]
         public string EventMode { get; set; }
+
+        [JsonProperty("externalId")]
+        public string ExternalId { get; set; }
+
+        [JsonProperty("externalIdUpdatedAt"), JsonConverter(typeof(WelkinUtcDateTimeConverter))]
+        public DateTimeOffset? ExternalIdUpdatedAt { get; set; }
 
         [JsonProperty("eventColor")]
         public string EventColor { get; set; }
@@ -117,49 +122,6 @@ namespace OutlookWelkinSync
                         !string.IsNullOrEmpty(p.ParticipantRole) && 
                         p.ParticipantRole.Equals(Constants.WelkinParticipantRolePatient, StringComparison.InvariantCultureIgnoreCase)
                     ).FirstOrDefault();
-            }
-        }
-
-        public string LinkedOutlookEventId
-        {
-            get
-            {
-                if (this.AdditionalInfo == null || !this.AdditionalInfo.ContainsKey(Constants.WelkinLinkedOutlookEventIdKey))
-                {
-                    return null;
-                }
-                return this.AdditionalInfo[Constants.WelkinLinkedOutlookEventIdKey];
-            }
-            set
-            {
-                if (this.AdditionalInfo == null)
-                {
-                    this.AdditionalInfo = new Dictionary<string, string>();
-                }
-                this.AdditionalInfo[Constants.WelkinLinkedOutlookEventIdKey] = value;
-            }
-        }
-
-        public DateTimeOffset? LastSyncDateTime
-        {
-            get
-            {
-                if (this.AdditionalInfo == null || !this.AdditionalInfo.ContainsKey(Constants.WelkinEventLastSyncKey))
-                {
-                    return null;
-                }
-                string dateTimeString = this.AdditionalInfo[Constants.WelkinEventLastSyncKey];
-                return DateTimeOffset.ParseExact(dateTimeString, "o", CultureInfo.InvariantCulture);
-            }
-            set
-            {
-                string dateTimeString = 
-                    value.HasValue ? value.Value.ToString("o", CultureInfo.InvariantCulture) : null;
-                if (this.AdditionalInfo == null)
-                {
-                    this.AdditionalInfo = new Dictionary<string, string>();
-                }
-                this.AdditionalInfo[Constants.WelkinEventLastSyncKey] = dateTimeString;
             }
         }
 
