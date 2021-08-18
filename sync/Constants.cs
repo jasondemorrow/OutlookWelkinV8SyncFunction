@@ -16,10 +16,12 @@ namespace OutlookWelkinSync
         public const string WelkinUseSandboxKey = "WelkinV8UseSandbox";
         public const string WelkinEventLastSyncKey = "WelkinEventLastSync";
         public const string WelkinLinkedOutlookEventIdKey = "LinkedOutlookEventId";
+        public const string WelkinUserWhitelistedEmailsKey = "WhitelistedWelkinUserEmails";
         public const string OutlookLinkedWelkinEventIdKey = "LinkedWelkinEventId";
         public const string OutlookPlaceHolderEventKey = "IsOutlookPlaceHolderEvent";
         public const string OutlookLastSyncDateTimeKey = "LastSyncDateTime";
         public const string OutlookUtcTimezoneLabel = "UTC";
+        public const string OutlookUserWhitelistedEmailsKey = "WhitelistedOutlookUserEmails";
         public const string DefaultModality = "call";
         public const string DefaultAppointmentType = "intake_call";
         public const string WelkinEventStatusCancelled = "Cancelled";

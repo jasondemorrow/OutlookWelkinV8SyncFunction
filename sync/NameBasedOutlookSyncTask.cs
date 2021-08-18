@@ -1,8 +1,10 @@
 namespace OutlookWelkinSync
 {
     using System;
+    using System.Collections.Generic;
     using Microsoft.Extensions.Logging;
     using Microsoft.Graph;
+    using Ninject;
 
     /// <summary>
     /// For the outlook event given, look for a linked welkin event and sync if it exists. 
@@ -12,7 +14,11 @@ namespace OutlookWelkinSync
     /// </summary>
     public class NameBasedOutlookSyncTask : OutlookSyncTask
     {
-        public NameBasedOutlookSyncTask(Event outlookEvent, OutlookClient outlookClient, WelkinClient welkinClient, ILogger logger) 
+        private static readonly IList<string> whiteListedOutlookUserEmails = Whitelisted.Emails(Constants.OutlookUserWhitelistedEmailsKey);
+
+        public NameBasedOutlookSyncTask(
+            Event outlookEvent, OutlookClient outlookClient, WelkinClient welkinClient, ILogger logger,
+            [Named(Constants.OutlookUserWhitelistedEmailsKey)] IList<string> whiteListedOutlookUserEmails)
         : base(outlookEvent, outlookClient, welkinClient, logger)
         {
         }
@@ -24,8 +30,17 @@ namespace OutlookWelkinSync
                 return null;
             }
 
+            string organizerEmail = this.outlookEvent.Organizer?.EmailAddress?.Address?.ToLowerInvariant().Trim();
             string linkedWelkinEventId = this.outlookClient.LinkedWelkinEventIdFrom(this.outlookEvent);
             WelkinEvent syncedTo = null;
+
+            if (whiteListedOutlookUserEmails != null && whiteListedOutlookUserEmails.Count > 0 && !whiteListedOutlookUserEmails.Contains(organizerEmail))
+            {
+                this.logger.LogWarning($"Skipping sync of Outlook event {this.outlookEvent.ICalUId} for user {organizerEmail} since they are not whitelisted for sync.");
+                return null; // There's a whitelist, and this user isn't on it.
+            }
+
+
             if (!string.IsNullOrEmpty(linkedWelkinEventId))
             {
                 syncedTo = this.welkinClient.RetrieveEvent(linkedWelkinEventId);
@@ -41,7 +56,7 @@ namespace OutlookWelkinSync
             else // Welkin needs to be created
             {
                 // Find the Welkin user for the Outlook event owner
-                string eventOwnerEmail = this.outlookEvent.AdditionalData[Constants.WelkinWorkerEmailKey].ToString();
+                string eventOwnerEmail = this.outlookEvent.AdditionalData[Constants.WelkinWorkerEmailKey].ToString().ToLowerInvariant().Trim();
                 WelkinUser practitioner = this.welkinClient.FindUser(eventOwnerEmail);
                 Throw.IfAnyAreNull(eventOwnerEmail, practitioner);
 

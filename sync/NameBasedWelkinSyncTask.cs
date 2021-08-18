@@ -1,9 +1,11 @@
 namespace OutlookWelkinSync
 {
     using System;
+    using System.Collections.Generic;
     using Microsoft.Extensions.Logging;
     using Microsoft.Graph;
-    
+    using Ninject;
+
     /// <summary>
     /// For the welkin event given, look for a linked outlook event and sync if it exists. 
     /// If not, get user that created the welkin event. If they have an outlook user with 
@@ -12,7 +14,11 @@ namespace OutlookWelkinSync
     /// </summary>
     public class NameBasedWelkinSyncTask : WelkinSyncTask
     {
-        public NameBasedWelkinSyncTask(WelkinEvent welkinEvent, OutlookClient outlookClient, WelkinClient welkinClient, ILogger logger) 
+        private static readonly IList<string> whiteListedWelkinUserEmails = Whitelisted.Emails(Constants.WelkinUserWhitelistedEmailsKey);
+
+        public NameBasedWelkinSyncTask(
+            WelkinEvent welkinEvent, OutlookClient outlookClient, WelkinClient welkinClient, ILogger logger,
+            [Named(Constants.WelkinUserWhitelistedEmailsKey)] IList<string> whiteListedWelkinUserEmails)
         : base(welkinEvent, outlookClient, welkinClient, logger)
         {
         }
@@ -25,6 +31,14 @@ namespace OutlookWelkinSync
             }
 
             WelkinUser practitioner = this.welkinClient.RetrieveUser(welkinEvent.HostId);
+            string welkinEmail = practitioner.Email?.ToLowerInvariant().Trim();
+
+            if (whiteListedWelkinUserEmails != null && whiteListedWelkinUserEmails.Count > 0 && !whiteListedWelkinUserEmails.Contains(welkinEmail))
+            {
+                this.logger.LogWarning($"Skipping sync of Welkin event {this.welkinEvent.Id} for user {welkinEmail} since they are not whitelisted for sync.");
+                return null; // There's a whitelist, and this user isn't on it.
+            }
+
             string syncedOutlookEventId = this.welkinEvent.ExternalId;
             Event syncedTo = null;
 
