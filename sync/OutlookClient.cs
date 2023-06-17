@@ -39,26 +39,31 @@ namespace OutlookWelkinSync
                                                     
             string[] scopes = new string[] { $"{config.ApiUrl}.default" }; 
             
-            AuthenticationResult result = app.AcquireTokenForClient(scopes).ExecuteAsync().GetAwaiter().GetResult();
-            this.token = result.AccessToken;
-
-            if (string.IsNullOrEmpty(this.token))
+            try
             {
-                throw new ArgumentException($"Unable to retrieve a valid token using the credentials in env");
-            }
-            
-            this.graphClient = new GraphServiceClient(new DelegateAuthenticationProvider((requestMessage) => {
-                requestMessage
-                    .Headers
-                    .Authorization = new AuthenticationHeaderValue("Bearer", this.token);
+                AuthenticationResult result = app.AcquireTokenForClient(scopes).ExecuteAsync().GetAwaiter().GetResult();
+                this.token = result.AccessToken;
 
-                return Task.FromResult(0);
-            }));
+                if (string.IsNullOrEmpty(this.token))
+                {
+                    throw new ArgumentException($"Unable to retrieve a valid token using the credentials in env");
+                }
+                
+                this.graphClient = new GraphServiceClient(new DelegateAuthenticationProvider((requestMessage) => {
+                    requestMessage
+                        .Headers
+                        .Authorization = new AuthenticationHeaderValue("Bearer", this.token);
+
+                    return Task.FromResult(0);
+                }));
+            } catch (Exception e) {
+                this.logger.LogError(e, "While constructing Outlook client");
+            }
         }
 
         public static bool IsPlaceHolderEvent(Event outlookEvent)
         {
-            Extension extensionForWelkin = outlookEvent?.Extensions?.Where(e => e.Id.EndsWith(Constants.OutlookEventExtensionsNamespace))?.FirstOrDefault();
+            Extension? extensionForWelkin = outlookEvent?.Extensions?.Where(e => e.Id.EndsWith(Constants.OutlookEventExtensionsNamespace))?.FirstOrDefault();
             if (extensionForWelkin?.AdditionalData != null && extensionForWelkin.AdditionalData.ContainsKey(Constants.OutlookPlaceHolderEventKey))
             {
                 return true;
@@ -67,18 +72,18 @@ namespace OutlookWelkinSync
             return false;
         }
 
-        private ICalendarRequestBuilder CalendarRequestBuilderFrom(Event outlookEvent, string userPrincipal, string calendarId = null)
+        private ICalendarRequestBuilder CalendarRequestBuilderFrom(Event outlookEvent, string? userPrincipal, string calendarId = null)
         {
             if (userPrincipal == null)
             {
-                User outlookUser = outlookEvent.AdditionalData[Constants.OutlookUserObjectKey] as User;
+                User? outlookUser = outlookEvent.AdditionalData[Constants.OutlookUserObjectKey] as User;
                 userPrincipal = outlookUser?.UserPrincipalName;
             }
             
             return CalendarRequestBuilderFrom(userPrincipal, calendarId);
         }
 
-        private ICalendarRequestBuilder CalendarRequestBuilderFrom(string userPrincipal, string calendarId = null)
+        private ICalendarRequestBuilder CalendarRequestBuilderFrom(string userPrincipal, string? calendarId = null)
         {
             IUserRequestBuilder userBuilder = this.graphClient.Users[userPrincipal];
             
@@ -92,13 +97,13 @@ namespace OutlookWelkinSync
             }
         }
 
-        public Event RetrieveEventWithICalId(
+        public Event? RetrieveEventWithICalId(
             User owningUser, 
             string iCalId, 
-            string extensionsNamespace = null, 
-            string calendarId = null)
+            string? extensionsNamespace = null, 
+            string? calendarId = null)
         {
-            Event found;
+            Event? found;
             if (this.internalCache.TryGetValue(iCalId, out found))
             {
                 return found;
@@ -204,25 +209,32 @@ namespace OutlookWelkinSync
                 return domains;
             }
 
-            var page = this.graphClient.Domains.Request().GetAsync().GetAwaiter().GetResult();
-            domains = page.Select(r => r.Id).ToHashSet();
+            try {
+                var page = this.graphClient.Domains.Request().GetAsync().GetAwaiter().GetResult();
+                domains = page.Select(r => r.Id).ToHashSet();
+            } catch(Exception e) {
+                logger.LogError(e, "In RetrieveAllDomainsInCompany");
+            }
 
             this.internalCache.Set(key, domains, this.cacheEntryOptions);
             return domains;
         }
         
-        public Event UpdateEvent(Event outlookEvent, string userName = null, string calendarId = null)
+        public Event? UpdateEvent(Event outlookEvent, string? userName = null, string? calendarId = null)
         {
+            this.logger.LogInformation("Not updating outlook event " + outlookEvent.ICalUId);
             return CalendarRequestBuilderFrom(outlookEvent, userName, calendarId)
                 .Events[outlookEvent.Id]
                 .Request()
                 .UpdateAsync(outlookEvent)
                 .GetAwaiter()
                 .GetResult();
+            return null;
         }
 
         public void DeleteEvent(Event outlookEvent, string userName = null, string calendarId = null)
         {
+            this.logger.LogInformation("Not deleting outlook event " + outlookEvent.ICalUId);
             CalendarRequestBuilderFrom(outlookEvent, userName, calendarId)
                 .Events[outlookEvent.Id]
                 .Request()
@@ -231,16 +243,16 @@ namespace OutlookWelkinSync
                 .GetResult();
         }
 
-        public string LinkedWelkinEventIdFrom(Event outlookEvent)
+        public string? LinkedWelkinEventIdFrom(Event outlookEvent)
         {
-            Extension extensionForWelkin = outlookEvent?.Extensions?.Where(e => e.Id.EndsWith(Constants.OutlookEventExtensionsNamespace))?.FirstOrDefault();
+            Extension? extensionForWelkin = outlookEvent?.Extensions?.Where(e => e.Id?.EndsWith(Constants.OutlookEventExtensionsNamespace) ?? false)?.FirstOrDefault();
             if (extensionForWelkin?.AdditionalData == null || !extensionForWelkin.AdditionalData.ContainsKey(Constants.OutlookLinkedWelkinEventIdKey))
             {
                 this.logger.LogInformation($"No linked Welkin event for Outlook event {outlookEvent.ICalUId}");
                 return null;
             }
 
-            string linkedEventId = extensionForWelkin.AdditionalData[Constants.OutlookLinkedWelkinEventIdKey]?.ToString();
+            string? linkedEventId = extensionForWelkin.AdditionalData[Constants.OutlookLinkedWelkinEventIdKey]?.ToString();
             if (string.IsNullOrEmpty(linkedEventId))
             {
                 this.logger.LogInformation($"Null or empty linked Welkin event ID for Outlook event {outlookEvent.ICalUId}");
@@ -250,7 +262,7 @@ namespace OutlookWelkinSync
             return linkedEventId;
         }
 
-        public Microsoft.Graph.Calendar RetrieveOwningUserDefaultCalendar(Event childEvent)
+        public Microsoft.Graph.Calendar? RetrieveOwningUserDefaultCalendar(Event childEvent)
         {
             if (!childEvent.AdditionalData.ContainsKey(Constants.WelkinWorkerEmailKey))
             {
@@ -266,20 +278,24 @@ namespace OutlookWelkinSync
                     .GetResult();
         }
 
-        public User RetrieveOwningUser(Event outlookEvent)
+        public User? RetrieveOwningUser(Event outlookEvent)
         {
-            return RetrieveUser(outlookEvent.AdditionalData[Constants.WelkinWorkerEmailKey].ToString());
+            return RetrieveUser(outlookEvent.AdditionalData[Constants.WelkinWorkerEmailKey]?.ToString());
         }
 
-        public User RetrieveUser(string email)
+        public User? RetrieveUser(string? email)
         {
+            if (email == null) {
+                return null;
+            }
+
             User retrieved;
             if (internalCache.TryGetValue(email, out retrieved))
             {
                 return retrieved;
             }
 
-            IUserRequestBuilder userRequestBuilder = this.graphClient.Users[email];
+            IUserRequestBuilder? userRequestBuilder = this.graphClient.Users[email];
             if (userRequestBuilder == null)
             {
                 return null;
@@ -302,9 +318,9 @@ namespace OutlookWelkinSync
             return retrieved;
         }
 
-        public User FindUserCorrespondingTo(WelkinUser welkinWorker)
+        public User? FindUserCorrespondingTo(WelkinUser welkinWorker)
         {
-            User retrieved;
+            User? retrieved;
             string key = "outlookuserfor:" + welkinWorker.Email;
             if (internalCache.TryGetValue(key, out retrieved))
             {
@@ -366,8 +382,9 @@ namespace OutlookWelkinSync
             return candidates;
         }
 
-        public void SetOpenExtensionPropertiesOnEvent(Event outlookEvent, IDictionary<string, object> keyValuePairs, string extensionsNamespace, string calendarId = null)
+        public void SetOpenExtensionPropertiesOnEvent(Event? outlookEvent, IDictionary<string, object> keyValuePairs, string extensionsNamespace, string calendarId = null)
         {
+            this.logger.LogInformation("Not setting extension properties outlook event " + outlookEvent.ICalUId);
             IEventExtensionsCollectionRequest request = 
                         CalendarRequestBuilderFrom(outlookEvent, null, calendarId)
                             .Events[outlookEvent.Id]
@@ -383,7 +400,7 @@ namespace OutlookWelkinSync
 
         public void MergeOpenExtensionPropertiesOnEvent(Event outlookEvent, IDictionary<string, object> keyValuePairs, string extensionsNamespace)
         {
-            Extension extension = outlookEvent?.Extensions?.Where(e => e.Id.EndsWith(extensionsNamespace))?.FirstOrDefault();
+            Extension? extension = outlookEvent?.Extensions?.Where(e => e.Id.EndsWith(extensionsNamespace))?.FirstOrDefault();
             if (extension?.AdditionalData != null)
             {
                 extension.AdditionalData.ToList().ForEach(x => 
@@ -425,10 +442,10 @@ namespace OutlookWelkinSync
 
         public static DateTime? GetLastSyncDateTime(Event outlookEvent)
         {
-            Extension extensionForWelkin = outlookEvent?.Extensions?.Where(e => e.Id.EndsWith(Constants.OutlookEventExtensionsNamespace))?.FirstOrDefault();
+            Extension? extensionForWelkin = outlookEvent?.Extensions?.Where(e => e.Id.EndsWith(Constants.OutlookEventExtensionsNamespace))?.FirstOrDefault();
             if (extensionForWelkin?.AdditionalData != null && extensionForWelkin.AdditionalData.ContainsKey(Constants.OutlookLastSyncDateTimeKey))
             {
-                string lastSync = extensionForWelkin.AdditionalData[Constants.OutlookLastSyncDateTimeKey].ToString();
+                string? lastSync = extensionForWelkin.AdditionalData[Constants.OutlookLastSyncDateTimeKey].ToString();
                 return string.IsNullOrEmpty(lastSync) ? null : new DateTime?(DateTime.ParseExact(lastSync, "o", CultureInfo.InvariantCulture).ToUniversalTime());
             }
 
@@ -437,7 +454,7 @@ namespace OutlookWelkinSync
 
         public Event CreateOutlookEventFromWelkinEvent(WelkinEvent welkinEvent, WelkinUser welkinUser, WelkinPatient welkinPatient, string calendarId = null)
         {
-            User outlookUser = this.FindUserCorrespondingTo(welkinUser);
+            User? outlookUser = this.FindUserCorrespondingTo(welkinUser);
             if (outlookUser == null)
             {
                 this.logger.LogWarning($"Couldn't find Outlook user corresponding to Welkin user {welkinUser.Email}. " +
@@ -483,6 +500,7 @@ namespace OutlookWelkinSync
                 }
             };
 
+            this.logger.LogInformation("Not creating new outlook event " + outlookEvent.Subject);
             ICalendarRequestBuilder calendarRequestBuilder = CalendarRequestBuilderFrom(outlookUser.UserPrincipalName, calendarId);
             ICalendarEventsCollectionRequest eventsCollectionRequest = calendarRequestBuilder.Events.Request();
             Task<Event> eventResult = eventsCollectionRequest.AddAsync(outlookEvent);
@@ -497,7 +515,7 @@ namespace OutlookWelkinSync
             return createdEvent;
         }
 
-        public Microsoft.Graph.Calendar RetrieveCalendar(string userPrincipal, string calendarName)
+        public Microsoft.Graph.Calendar? RetrieveCalendar(string userPrincipal, string calendarName)
         {
             List<Microsoft.Graph.Calendar> calendars = new List<Microsoft.Graph.Calendar>();
             IUserCalendarsCollectionPage page = this.graphClient
@@ -512,7 +530,7 @@ namespace OutlookWelkinSync
                 page = page.NextPageRequest.GetAsync().GetAwaiter().GetResult();
                 calendars.AddRange(page.ToList());
             }
-            Microsoft.Graph.Calendar calendar = calendars
+            Microsoft.Graph.Calendar? calendar = calendars
                                                     .Where(c => c.Name.ToLowerInvariant().Equals(calendarName.ToLowerInvariant()))
                                                     .FirstOrDefault();
             if (calendar == null)

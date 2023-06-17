@@ -69,9 +69,11 @@ namespace OutlookWelkinSync
             }
         }
 
-        private T CreateOrUpdateObject<T>(T obj, string path, string id = null) where T : class
+        private T? CreateOrUpdateObject<T>(T obj, string path, string id = null) where T : class
         {
             string url = (id == null) ? $"{this.baseEndpointUrl}{path}" : $"{this.baseEndpointUrl}{path}/{id}";
+            this.logger.LogInformation("Not creating or updating object " + url);
+            return null;
             var client = new RestClient(url);
 
             Method method = (id == null) ? Method.POST : Method.PUT;
@@ -86,14 +88,17 @@ namespace OutlookWelkinSync
                 throw new Exception($"HTTP status {response.StatusCode} with message '{response.ErrorMessage}' and body '{response.Content}'");
             }
 
-            JObject data = JsonConvert.DeserializeObject(response.Content) as JObject;
+            JObject? data = JsonConvert.DeserializeObject(response.Content) as JObject;
             if (data != null && data.ContainsKey("data"))
             {
                 data = data["data"].ToObject<JProperty>()?.Value.ToObject<JObject>();
             }
-            T updated = (data == null) ? default(T) : JsonConvert.DeserializeObject<T>(data.ToString());
+            T? updated = (data == null) ? default(T) : JsonConvert.DeserializeObject<T>(data.ToString());
 
-            internalCache.Set(url, updated, cacheEntryOptions);
+            if (updated != null) {
+                internalCache.Set(url, updated, cacheEntryOptions);
+            }
+
             return updated;
         }
 
@@ -143,6 +148,7 @@ namespace OutlookWelkinSync
         private void DeleteObject(string id, string path)
         {
             string url = $"{this.baseEndpointUrl}{path}/{id}";
+            this.logger.LogInformation("Not creating or updating object " + url);
             var client = new RestClient(url);
 
             Method method = Method.DELETE;
@@ -240,7 +246,7 @@ namespace OutlookWelkinSync
                 currentPage++;
                 string nextUrl = $"{url}?page={currentPage}";
                 client = new RestClient(nextUrl);
-                request = new RestRequest(Method.GET);
+                request = new RestRequest("/");
                 request.AddHeader("authorization", "Bearer " + this.token);
                 request.AddHeader("cache-control", "no-cache");
                 response = client.Execute(request);
@@ -265,7 +271,7 @@ namespace OutlookWelkinSync
             return retrieved;
         }
 
-        public WelkinEvent CreateOrUpdateEvent(WelkinEvent evt, string id = null)
+        public WelkinEvent? CreateOrUpdateEvent(WelkinEvent evt, string id = null)
         {
             evt.LocalEnd = null;   // Welkin will return "bad request"
             evt.LocalStart = null; // if we try to set local times.
@@ -312,7 +318,7 @@ namespace OutlookWelkinSync
             this.DeleteObject(welkinEvent.Id, Constants.V8CalendarEventResourceName);
         }
 
-        public WelkinEvent CancelEvent(WelkinEvent welkinEvent)
+        public WelkinEvent? CancelEvent(WelkinEvent welkinEvent)
         {
             welkinEvent.EventStatus = Constants.WelkinEventStatusCancelled;
             return this.CreateOrUpdateObject(welkinEvent, Constants.V8CalendarEventResourceName, welkinEvent.Id);
@@ -323,7 +329,7 @@ namespace OutlookWelkinSync
             return this.RetrieveObject<WelkinPatient>(patientId, Constants.WelkinPatientResourceName, null, true);
         }
 
-        public WelkinUser RetrieveUser(string userId)
+        public WelkinUser? RetrieveUser(string userId)
         {
             Dictionary<string, string> parameters = new Dictionary<string, string>();
             parameters["ids"] = userId;
@@ -336,14 +342,14 @@ namespace OutlookWelkinSync
             return this.SearchObjects<WelkinUser>(Constants.WelkinUserResourceName, null, true);
         }
 
-        public WelkinUser FindUser(string email)
+        public WelkinUser? FindUser(string email)
         {
             if (string.IsNullOrEmpty(email))
             {
                 return null;
             }
 
-            WelkinUser user;
+            WelkinUser? user;
 
             if (internalCache.TryGetValue(email.ToLowerInvariant(), out user))
             {
@@ -385,7 +391,7 @@ namespace OutlookWelkinSync
 
         public bool IsPlaceHolderEvent(WelkinEvent evt)
         {
-            string patientId = evt?.Patient?.Id;
+            string? patientId = evt?.Patient?.Id;
             return !string.IsNullOrEmpty(patientId) && patientId.Equals(this.dummyPatientId);
         }
     }

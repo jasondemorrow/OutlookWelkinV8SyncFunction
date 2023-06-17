@@ -25,7 +25,7 @@ namespace OutlookWelkinSync
             {
                 try
                 {
-                    User outlookUser = this.outlookClient.FindUserCorrespondingTo(worker);
+                    User? outlookUser = this.outlookClient.FindUserCorrespondingTo(worker);
                     if (outlookUser == null || successfulOutlookUsers.Contains(outlookUser.UserPrincipalName))
                     {
                         continue;
@@ -66,7 +66,7 @@ namespace OutlookWelkinSync
             {
                 try
                 {
-                    User outlookUser = this.outlookClient.FindUserCorrespondingTo(worker);
+                    User? outlookUser = this.outlookClient.FindUserCorrespondingTo(worker);
                     if (outlookUser == null || successfulOutlookUsers.Contains(outlookUser.UserPrincipalName))
                     {
                         continue;
@@ -82,7 +82,7 @@ namespace OutlookWelkinSync
                     {
                         if (OutlookClient.IsPlaceHolderEvent(outlookEvent))
                         {
-                            string linkedWelkinEventId = this.outlookClient.LinkedWelkinEventIdFrom(outlookEvent);
+                            string? linkedWelkinEventId = this.outlookClient.LinkedWelkinEventIdFrom(outlookEvent);
                             WelkinEvent syncedTo = null;
                             if (!string.IsNullOrEmpty(linkedWelkinEventId))
                             {
