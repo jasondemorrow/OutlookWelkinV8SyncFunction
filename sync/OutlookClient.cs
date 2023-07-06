@@ -513,6 +513,7 @@ namespace OutlookWelkinSync
             this.SetOpenExtensionPropertiesOnEvent(createdEvent, keyValuePairs, Constants.OutlookEventExtensionsNamespace);
 
             return createdEvent;
+            
         }
 
         public Microsoft.Graph.Calendar? RetrieveCalendar(string userPrincipal, string calendarName)
